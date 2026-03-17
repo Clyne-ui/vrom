@@ -1,0 +1,62 @@
+# --- IDE & OS ---
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# --- Environment & Secrets ---
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+**/*.env
+*.pem
+*.key
+vrom-firebase-adminsdk.json
+**/vrom-firebase-adminsdk.json
+vrom/backend/vrom.exe
+
+# --- Go (Backend) ---
+backend/vrom
+backend/vrom.exe
+backend/*.exe
+backend/bin/
+backend/vendor/
+
+# --- Rust (Matching Engine) ---
+matching_engine/target/
+matching_engine/Cargo.lock
+
+# --- Java (Stream Processor) ---
+stream_processor/target/
+stream_processor/.mvn/
+stream_processor/*.class
+stream_processor/*.jar
+stream_processor/.classpath
+stream_processor/.project
+stream_processor/.settings/
+
+# --- Python (AI Service) ---
+ai_service/__pycache__/
+ai_service/*.pyc
+ai_service/venv/
+ai_service/.venv/
+ai_service/env/
+ai_service/.env
+ai_service/faiss_index/
+
+# --- Database ---
+database/*.sql.gz
+database/dump/
+vrom-firebase-adminsdk.json
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Protobuf Generated Files (Optional - depends on preference, but usually tracked in Go) ---
+# backend/pb/*.pb.go
+# ai_service/*_pb2.py

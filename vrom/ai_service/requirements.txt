@@ -1,0 +1,11 @@
+grpcio
+grpcio-tools
+protobuf
+transformers
+torch
+fastapi
+uvicorn
+langchain
+sentence-transformers
+faiss-cpu
+langchain-community

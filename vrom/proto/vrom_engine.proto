@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package vrom;
+option go_package = "./pb";
+
+service MatchingEngine {
+    rpc SolveTSP(RouteRequest) returns (RouteResponse);
+    rpc GetNearby(NearbyRequest) returns (NearbyResponse);
+}
+
+message NearbyRequest {
+    double lat = 1;
+    double lng = 2;
+    uint32 radius_km = 3;
+}
+
+message NearbyResponse {
+    repeated NearbyEntity entities = 1;
+    string h3_index = 2; // The H3 cell of the search center
+}
+
+message NearbyEntity {
+    string id = 1;
+    string h3_index = 2;
+    double distance_km = 3;
+}
+
+message RouteRequest {
+    string rider_id = 1;
+    repeated Location points = 2;
+}
+
+message Location {
+    double lat = 1;
+    double lng = 2;
+    string id = 3;
+}
+
+message RouteResponse {
+    repeated string optimized_ids = 1;
+    double total_distance = 2;
+}

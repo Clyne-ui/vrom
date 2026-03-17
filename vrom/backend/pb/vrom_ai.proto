@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+// Defines the AI Service payload structure
+package ai;
+
+// Python package option
+option java_multiple_files = true;
+option go_package = "vrom-backend/pb";
+
+service AIService {
+    // 1. Tagging (Visual Merchandising)
+    rpc TagProduct(ProductRequest) returns (TagResponse) {}
+    
+    // 2. Content Moderation (Guardian)
+    rpc ModerateContent(ContentRequest) returns (ModerationResponse) {}
+
+    // 3. Customer Support (RAG)
+    rpc SupportChat(ChatRequest) returns (ChatResponse) {}
+
+    // 4. Logistics (ETA Predictor)
+    rpc PredictETA(ETARequest) returns (ETAResponse) {}
+}
+
+// Support RAG Models
+message ChatRequest {
+    string user_id = 1;
+    string query = 2;
+}
+
+message ChatResponse {
+    string response = 1;
+    repeated string sources = 2;
+}
+
+// ETA Predictor Models
+message ETARequest {
+    double start_lat = 1;
+    double start_lng = 2;
+    double end_lat = 3;
+    double end_lng = 4;
+    string vehicle_type = 5;
+}
+
+message ETAResponse {
+    double estimated_minutes = 1;
+    string traffic_status = 2;
+}
+
+// Visual Merchandiser Models
+message ProductRequest {
+    string id = 1;
+    string title = 2;
+    string description = 3;
+}
+
+message TagResponse {
+    repeated string tags = 1;
+}
+
+// Guardian Models
+message ContentRequest {
+    string id = 1;
+    string text = 2;
+}
+
+message ModerationResponse {
+    bool is_approved = 1;
+    string reason = 2;
+}

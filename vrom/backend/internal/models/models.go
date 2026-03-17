@@ -1,0 +1,111 @@
+package models
+
+type User struct {
+	FullName    string `json:"full_name"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phone_number"`
+	Password    string `json:"password"`
+	Role        string `json:"role"`
+}
+
+type RiderOnboarding struct {
+	UserID         string `json:"user_id"`
+	SelfieURL      string `json:"selfie_url"`
+	IDFrontURL     string `json:"id_front_url"`
+	IDBackURL      string `json:"id_back_url"`
+	GoodConductURL string `json:"good_conduct_url"`
+	VehicleType    string `json:"vehicle_type"`
+	PlateNumber    string `json:"plate_number"`
+	VehiclePhotoURL string `json:"vehicle_photo_url"`
+}
+
+type SellerOnboarding struct {
+	UserID      string `json:"user_id"`
+	ShopName    string `json:"shop_name"`
+	ShopAddress string `json:"shop_address"`
+	ShopLogoURL string `json:"shop_logo_url"`
+	IDFrontURL  string `json:"id_front_url"`
+	IDBackURL   string `json:"id_back_url"`
+}
+
+type Product struct {
+	ProductID  string  `json:"product_id"`
+	SellerID   string  `json:"seller_id"`
+	ShopID     string  `json:"shop_id"`     // Link to physical branch
+	CategoryID string  `json:"category_id"` // Category link
+	Title      string  `json:"title"`
+	Price      float64 `json:"price"`
+	Currency   string  `json:"currency"`
+	ImageURL   string  `json:"image_url"`
+	StockCount int     `json:"stock_count"`
+}
+
+type Category struct {
+	CategoryID  string `json:"category_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IconURL     string `json:"icon_url"`
+}
+
+type Shop struct {
+	ShopID      string  `json:"shop_id"`
+	SellerID    string  `json:"seller_id"`
+	ShopName    string  `json:"shop_name"`
+	ShopAddress string  `json:"shop_address"`
+	Lat         float64 `json:"lat"`
+	Lng         float64 `json:"lng"`
+}
+
+type DiscoveryInput struct {
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
+	Radius     float64 `json:"radius"`      // Optional
+	CategoryID string  `json:"category_id"` // Filter by category
+}
+
+type OrderInput struct {
+	ProductID   string  `json:"product_id"`
+	Quantity    int     `json:"quantity"`
+	DeliveryLat float64 `json:"delivery_lat"`
+	DeliveryLng float64 `json:"delivery_lng"`
+}
+
+type SellerProfile struct {
+	FullName    string  `json:"full_name"`
+	ShopName    string  `json:"shop_name"`
+	ShopAddress string  `json:"shop_address"`
+	Balance     float64 `json:"balance"`
+}
+
+type PendingRider struct {
+	UserID      string `json:"user_id"`
+	FullName    string `json:"full_name"`
+	VehicleType string `json:"vehicle_type"`
+	IDImage     string `json:"id_image_url"`
+}
+
+type Activity struct {
+	ID           int     `json:"id"`
+	ActivityType string  `json:"activity_type"`
+	Amount       float64 `json:"amount"`
+	Description  string  `json:"description"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+type RideRequestInput struct {
+	PickupLat      float64 `json:"pickup_lat"`
+	PickupLng      float64 `json:"pickup_lng"`
+	PickupAddress  string  `json:"pickup_address"`
+	DropoffLat     float64 `json:"dropoff_lat"`
+	DropoffLng     float64 `json:"dropoff_lng"`
+	DropoffAddress string  `json:"dropoff_address"`
+}
+
+type UserProfile struct {
+	FullName    string     `json:"full_name"`
+	Email       string     `json:"email"`
+	PhoneNumber string     `json:"phone_number"`
+	Role        string     `json:"role"`
+	Balance     float64    `json:"balance"`
+	History     []Activity `json:"history"`
+}
