@@ -27,30 +27,39 @@ func RequestRide(db *sql.DB, customerEmail string, input models.RideRequestInput
 		return "", fmt.Errorf("could not find your account: %v", err)
 	}
 
-	// 2. Enforce: customer MUST have enough funds
+	// 2. Determine initial status and handle balance
+	var status string = "pending"
 	if walletBalance < estimatedPrice {
-		return "", fmt.Errorf("insufficient wallet balance. Ride costs KES %.2f but your wallet has KES %.2f", estimatedPrice, walletBalance)
+		status = "pending_payment"
+	} else {
+		// 3. Move funds to escrow IF balance is enough
+		_, err = tx.ExecContext(ctx,
+			"UPDATE wallets SET balance = balance - $1, locked_funds = locked_funds + $1 WHERE user_id = $2",
+			estimatedPrice, buyerID)
+		if err != nil {
+			return "", fmt.Errorf("failed to secure escrow: %v", err)
+		}
 	}
 
-	// 3. Move funds to escrow (deduct from balance, lock in locked_funds)
-	_, err = tx.ExecContext(ctx,
-		"UPDATE wallets SET balance = balance - $1, locked_funds = locked_funds + $1 WHERE user_id = $2",
-		estimatedPrice, buyerID)
-	if err != nil {
-		return "", fmt.Errorf("failed to secure escrow: %v", err)
-	}
-
-	// 4. Create the trip record (NO OTP — trips use GPS verification, not OTP)
+	// 4. Create the trip record
 	var tripID string
 	query := `
-		INSERT INTO trips (buyer_id, rider_id, actual_fare, status, pickup_location, dropoff_location) 
-		VALUES ($1, $2, $3, 'pending', ST_SetSRID(ST_MakePoint($4, $5), 4326), ST_SetSRID(ST_MakePoint($6, $7), 4326))
+		INSERT INTO trips (buyer_id, rider_id, actual_fare, status, pickup_location, dropoff_location, pickup_address, dropoff_address) 
+		VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326), ST_SetSRID(ST_MakePoint($7, $8), 4326), $9, $10)
 		RETURNING trip_id`
 
 	err = tx.QueryRowContext(ctx, query,
-		buyerID, riderID, estimatedPrice,
+		buyerID, riderID, estimatedPrice, status,
 		input.PickupLng, input.PickupLat,
-		input.DropoffLng, input.DropoffLat).Scan(&tripID)
+		input.DropoffLng, input.DropoffLat,
+		input.PickupAddress, input.DropoffAddress).Scan(&tripID)
+	if err != nil {
+		return "", fmt.Errorf("failed to create trip: %v", err)
+	}
+
+	if status == "pending_payment" {
+		return tripID, fmt.Errorf("PAYMENT_REQUIRED: Insufficient balance for trip %s", tripID)
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to create trip: %v", err)
 	}
@@ -214,4 +223,38 @@ func CancelRide(db *sql.DB, tripID, customerEmail string) (float64, string, erro
 	}
 
 	return amount, tripID, nil
+}
+
+// AuthorizeTripPayment handles the "Lipa Na M-Pesa" success for a trip.
+// It moves the incoming payment directly into escrow since the trip was 
+// already created in 'pending_payment' status.
+func AuthorizeTripPayment(db *sql.DB, tripID string) error {
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var amount float64
+	var buyerID string
+	// Verify trip exists and is blocking on payment
+	err = tx.QueryRowContext(ctx, "SELECT actual_fare, buyer_id FROM trips WHERE trip_id = $1 AND status = 'pending_payment' FOR UPDATE", tripID).Scan(&amount, &buyerID)
+	if err != nil {
+		return fmt.Errorf("trip not found or already paid")
+	}
+
+	// Since this is a fresh deposit confirmed via webhook, we credit the balance THEN lock it to escrow.
+	// This ensures the ledger (user_activities) remains accurate.
+	_, err = tx.ExecContext(ctx, "UPDATE wallets SET locked_funds = locked_funds + $1 WHERE user_id = $2", amount, buyerID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE trips SET status = 'pending' WHERE trip_id = $1", tripID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

@@ -457,3 +457,32 @@ func ResetPasswordWithToken(db *sql.DB, token, newPassword string) error {
 
 	return tx.Commit()
 }
+
+func UpdateUser(db *sql.DB, email, fullName, phoneNumber string) error {
+	_, err := db.Exec("UPDATE users SET full_name = $1, phone_number = $2 WHERE email = $3", fullName, phoneNumber, email)
+	return err
+}
+
+func GetDetailedStatement(db *sql.DB, userID string) ([]models.Activity, error) {
+	query := `
+		SELECT id, activity_type, amount, description, created_at, balance_after
+		FROM user_activities 
+		WHERE user_id = $1 
+		ORDER BY created_at DESC`
+	
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var statement []models.Activity
+	for rows.Next() {
+		var act models.Activity
+		if err := rows.Scan(&act.ID, &act.ActivityType, &act.Amount, &act.Description, &act.CreatedAt, &act.BalanceAfter); err != nil {
+			return nil, err
+		}
+		statement = append(statement, act)
+	}
+	return statement, nil
+}

@@ -89,6 +89,7 @@ type Activity struct {
 	ActivityType string  `json:"activity_type"`
 	Amount       float64 `json:"amount"`
 	Description  string  `json:"description"`
+	BalanceAfter float64 `json:"balance_after"`
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -108,4 +109,101 @@ type UserProfile struct {
 	Role        string     `json:"role"`
 	Balance     float64    `json:"balance"`
 	History     []Activity `json:"history"`
+}
+
+// ── OCC Models ─────────────────────────────────────────────
+type OCCFinancials struct {
+	// Money Flow
+	GMV                float64 `json:"gmv"`                 // Gross Merchandise Value
+	Commission         float64 `json:"commission"`          // Vrom Earnings
+	EscrowInFlight     float64 `json:"escrow_in_flight"`    // Currently locked in escrow
+	TotalWalletBalance float64 `json:"total_wallet_balance"`// All users' loaded cash combined
+	TotalWithdrawn     float64 `json:"total_withdrawn"`     // Money successfully paid out to M-Pesa
+	
+	// Activity Counts
+	TotalOrders    int `json:"total_orders"`
+	CompletedSales int `json:"completed_sales"`
+	PendingTrips   int `json:"pending_trips"`
+	CompletedTrips int `json:"completed_trips"`
+}
+
+type RevenueBreakdown struct {
+	Daily   float64 `json:"daily"`
+	Weekly  float64 `json:"weekly"`
+	Monthly float64 `json:"monthly"`
+}
+
+type EscrowEntry struct {
+	OrderID   string  `json:"order_id"`
+	BuyerName string  `json:"buyer_name"`
+	Amount    float64 `json:"amount"`
+	Status    string  `json:"status"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type AdminUserView struct {
+	UserID      string  `json:"user_id"`
+	FullName    string  `json:"full_name"`
+	Email       string  `json:"email"`
+	PhoneNumber string  `json:"phone_number"`
+	Role        string  `json:"role"`
+	IsVerified  bool    `json:"is_verified"`
+	CreatedAt   string  `json:"created_at"`
+	Balance     float64 `json:"balance"`
+}
+
+type TripSummary struct {
+	TripID    string  `json:"trip_id"`
+	Status    string  `json:"status"`
+	Fare      float64 `json:"fare"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type OrderSummary struct {
+	OrderID   string  `json:"order_id"`
+	Status    string  `json:"status"`
+	Amount    float64 `json:"amount"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type AdminUserHistory struct {
+	UserID     string        `json:"user_id"`
+	Activities []Activity    `json:"activities"`
+	Trips      []TripSummary `json:"trips"`
+	Orders     []OrderSummary `json:"orders"`
+}
+
+type DisputeEntry struct {
+	OrderID    string  `json:"order_id"`
+	BuyerName  string  `json:"buyer_name"`
+	SellerName string  `json:"seller_name"`
+	Amount     float64 `json:"amount"`
+	Status     string  `json:"status"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+type AuditEntry struct {
+	LogID      string `json:"log_id"`
+	AdminEmail string `json:"admin_email"`
+	Action     string `json:"action"`
+	TargetID   string `json:"target_id"`
+	IPAddress  string `json:"ip_address"`
+	CreatedAt  string `json:"created_at"`
+}
+
+type FlaggedProduct struct {
+	ProductID  string  `json:"product_id"`
+	Title      string  `json:"title"`
+	ImageURL   string  `json:"image_url"`
+	Price      float64 `json:"price"`
+	SellerName string  `json:"seller_name"`
+	FlaggedAt  string  `json:"flagged_at"`
+}
+
+type RiderLeaderboardEntry struct {
+	UserID        string  `json:"user_id"`
+	FullName      string  `json:"full_name"`
+	TripCount     int     `json:"trip_count"`
+	TotalEarnings float64 `json:"total_earnings"`
+	AvgRating     float64 `json:"avg_rating"`
 }

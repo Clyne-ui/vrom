@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"vrom-backend/internal/events"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
@@ -177,13 +178,16 @@ func HandleWithdrawToMpesa(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Phase 15: Trigger actual M-Pesa B2C Transfer
+		services.InitiateB2CTransfer(phone, req.Amount)
+
 		// Trigger Kafka event for fraud detection (negative amount for withdrawal)
 		go events.PublishTransactionEvent(userID, -req.Amount, "mpesa_withdrawal")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":      "Processing",
-			"message":     fmt.Sprintf("KES %.2f is being sent to %s", req.Amount, phone),
+			"status":      "Success",
+			"message":     fmt.Sprintf("KES %.2f has been sent to %s via M-Pesa", req.Amount, phone),
 			"new_balance": newBalance,
 		})
 	}
@@ -281,18 +285,74 @@ func HandlePaystackWebhook(db *sql.DB) http.HandlerFunc {
 
 		// 4. Process Success
 		if event.Event == "charge.success" && event.Data.Status == "success" {
+			ref := event.Data.Reference
+			amount := float64(event.Data.Amount) / 100.0
+
+			// Handle Trip/Order Authorizations based on Reference Prefix
+			if strings.HasPrefix(ref, "TRIP_") {
+				tripID := strings.TrimPrefix(ref, "TRIP_")
+				if err := repository.AuthorizeTripPayment(db, tripID); err == nil {
+					fmt.Printf("✅ Webhook: Trip %s authorized and secured.\n", tripID)
+					return
+				}
+			} else if strings.HasPrefix(ref, "ORDER_") {
+				orderID := strings.TrimPrefix(ref, "ORDER_")
+				if err := repository.AuthorizeOrderPayment(db, orderID); err == nil {
+					fmt.Printf("✅ Webhook: Order %s authorized and secured.\n", orderID)
+					return
+				}
+			}
+
+			// Default: General Wallet Deposit
 			var userID string
 			err := db.QueryRow("SELECT user_id FROM users WHERE email = $1", event.Data.Customer.Email).Scan(&userID)
 			if err == nil {
-				amount := float64(event.Data.Amount) / 100.0
-				// Update wallet
-				repository.RecordTransaction(db, userID, "deposit", "Paystack Webhook Confirmation", amount)
+				repository.RecordTransaction(db, userID, "deposit", "Paystack Confirm", amount)
 				go events.PublishTransactionEvent(userID, amount, "online_payment")
-				fmt.Printf("✅ Webhook: Wallet updated for %s (Ref: %s)\n", event.Data.Customer.Email, event.Data.Reference)
+				fmt.Printf("✅ Webhook: Wallet updated for %s (Ref: %s)\n", event.Data.Customer.Email, ref)
 			}
 		}
 
 		// Always return 200 to acknowledge receipt
 		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func HandleUpdateProfile(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			FullName    string `json:"full_name"`
+			PhoneNumber string `json:"phone_number"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+
+		email := r.Header.Get("X-User-Email")
+		if err := repository.UpdateUser(db, email, req.FullName, req.PhoneNumber); err != nil {
+			http.Error(w, "Failed to update profile", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success", "message": "Profile updated successfully"})
+	}
+}
+
+func HandleGetStatement(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		email := r.Header.Get("X-User-Email")
+		var userID string
+		db.QueryRow("SELECT user_id FROM users WHERE email = $1", email).Scan(&userID)
+
+		statement, err := repository.GetDetailedStatement(db, userID)
+		if err != nil {
+			http.Error(w, "Could not fetch statement", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(statement)
 	}
 }

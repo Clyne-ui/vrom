@@ -167,6 +167,25 @@ func HandleCreateOrder(db *sql.DB) http.HandlerFunc {
 
 		orderID, total, shipping, err := repository.CreateOrder(db, email, req, otp)
 		if err != nil {
+			// Phase 15: Handle payment required via STK Push
+			if strings.Contains(err.Error(), "PAYMENT_REQUIRED") {
+				var phone string
+				db.QueryRow("SELECT phone_number FROM users WHERE email = $1", email).Scan(&phone)
+
+				payRef := fmt.Sprintf("ORDER_%s", orderID)
+				services.InitiateSTKPush(phone, email, total, payRef)
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusPaymentRequired)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status":      "Payment Prompt Sent 📲",
+					"order_id":    orderID,
+					"total_kes":   total,
+					"message":     "Your wallet balance is low. We've sent an M-Pesa prompt to your phone to secure this order.",
+					"reference":   payRef,
+				})
+				return
+			}
 			http.Error(w, "Order failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -361,5 +380,45 @@ func HandleGetNearbyProducts(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(products)
+	}
+}
+
+func HandleEditProduct(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		productID := r.URL.Query().Get("product_id")
+		var p models.Product
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+
+		email := r.Header.Get("X-User-Email")
+		var sellerID string
+		db.QueryRow("SELECT user_id FROM users WHERE email = $1", email).Scan(&sellerID)
+
+		if err := repository.UpdateProduct(db, productID, sellerID, p); err != nil {
+			http.Error(w, "Update failed", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success", "message": "Product updated"})
+	}
+}
+
+func HandleDeleteProduct(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		productID := r.URL.Query().Get("product_id")
+		email := r.Header.Get("X-User-Email")
+		var sellerID string
+		db.QueryRow("SELECT user_id FROM users WHERE email = $1", email).Scan(&sellerID)
+
+		if err := repository.DeleteProduct(db, productID, sellerID); err != nil {
+			http.Error(w, "Delete failed", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success", "message": "Product deleted (deactivated)"})
 	}
 }

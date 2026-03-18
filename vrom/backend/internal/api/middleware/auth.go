@@ -37,6 +37,12 @@ func RequireRole(db *sql.DB, allowedRoles []string, next http.HandlerFunc) http.
 			return
 		}
 
+		// Check if user has been emergency-suspended by OCC
+		if services.IsUserSuspended(claims.UserID) {
+			http.Error(w, "Your account has been suspended. Please contact support.", http.StatusForbidden)
+			return
+		}
+
 		// Inject identity into headers for downstream handlers (if needed)
 		r.Header.Set("X-User-Email", claims.Email)
 		r.Header.Set("X-User-ID", claims.UserID)

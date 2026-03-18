@@ -130,17 +130,18 @@ func CreateOrder(db *sql.DB, buyerEmail string, req models.OrderInput, otp strin
 	totalItemCost := productPrice * float64(req.Quantity)
 	totalAmount := totalItemCost + shippingFee
 
+	// 4. Determine status and handle escrow
+	var status string = "paid_escrow"
 	if balance < totalAmount {
-		return "", 0, 0, fmt.Errorf("insufficient funds. Need %.2f but have %.2f", totalAmount, balance)
+		status = "pending_payment"
+	} else {
+		_, err = tx.ExecContext(ctx, "UPDATE wallets SET balance = balance - $1, locked_funds = locked_funds + $1 WHERE user_id = $2", totalAmount, buyerID)
+		if err != nil {
+			return "", 0, 0, err
+		}
 	}
 
-	// 4. Deduct and lock in Escrow
-	_, err = tx.ExecContext(ctx, "UPDATE wallets SET balance = balance - $1, locked_funds = locked_funds + $1 WHERE user_id = $2", totalAmount, buyerID)
-	if err != nil {
-		return "", 0, 0, err
-	}
-
-	// 5. Update stock
+	// 5. Update stock (We reserve stock even if payment is pending)
 	_, err = tx.ExecContext(ctx, "UPDATE products SET stock_count = stock_count - $1 WHERE product_id = $2", req.Quantity, req.ProductID)
 	if err != nil {
 		return "", 0, 0, err
@@ -150,24 +151,30 @@ func CreateOrder(db *sql.DB, buyerEmail string, req models.OrderInput, otp strin
 	var orderID string
 	orderQuery := `
 		INSERT INTO orders (buyer_id, product_id, seller_id, total_amount, status, delivery_otp, quantity)
-		VALUES ($1, $2, $3, $4, 'paid_escrow', $5, $6)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING order_id`
-	err = tx.QueryRowContext(ctx, orderQuery, buyerID, req.ProductID, sellerID, totalAmount, otp, req.Quantity).Scan(&orderID)
+	err = tx.QueryRowContext(ctx, orderQuery, buyerID, req.ProductID, sellerID, totalAmount, status, otp, req.Quantity).Scan(&orderID)
 	if err != nil {
 		return "", 0, 0, err
 	}
 
-	// 7. Record Transaction
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO wallet_transactions (wallet_id, order_id, amount, transaction_type)
-		VALUES ($1, $2, $3, 'ESCROW_LOCK')`,
-		buyerID, orderID, totalAmount)
-	if err != nil {
-		return "", 0, 0, err
+	// 7. Record Transaction (Only if paid)
+	if status == "paid_escrow" {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO wallet_transactions (wallet_id, order_id, amount, transaction_type)
+			VALUES ($1, $2, $3, 'ESCROW_LOCK')`,
+			buyerID, orderID, totalAmount)
+		if err != nil {
+			return "", 0, 0, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return "", 0, 0, err
+	}
+
+	if status == "pending_payment" {
+		return orderID, totalAmount, shippingFee, fmt.Errorf("PAYMENT_REQUIRED: Insufficient balance for order %s", orderID)
 	}
 
 	return orderID, totalAmount, shippingFee, nil
@@ -292,4 +299,40 @@ func CompleteOrder(db *sql.DB, orderID, riderID, inputOTP string) (float64, floa
 	}
 
 	return riderShare, sellerShare, nil
+}
+
+func AuthorizeOrderPayment(db *sql.DB, orderID string) error {
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var amount float64
+	var buyerID string
+	err = tx.QueryRowContext(ctx, "SELECT total_amount, buyer_id FROM orders WHERE order_id = $1 AND status = 'pending_payment' FOR UPDATE", orderID).Scan(&amount, &buyerID)
+	if err != nil {
+		return fmt.Errorf("order not found or already paid")
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE wallets SET locked_funds = locked_funds + $1 WHERE user_id = $2", amount, buyerID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE orders SET status = 'paid_escrow' WHERE order_id = $1", orderID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO wallet_transactions (wallet_id, order_id, amount, transaction_type)
+		VALUES ($1, $2, $3, 'ESCROW_LOCK')`,
+		buyerID, orderID, amount)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

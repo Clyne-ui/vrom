@@ -116,3 +116,16 @@ func GetNearbyProducts(db *sql.DB, input models.DiscoveryInput) ([]models.Produc
 	}
 	return products, nil
 }
+func UpdateProduct(db *sql.DB, productID, sellerID string, p models.Product) error {
+	query := `
+		UPDATE products 
+		SET title = $1, price = $2, image_url = $3, stock_count = $4, category_id = $5 
+		WHERE product_id = $6 AND seller_id = $7`
+	_, err := db.Exec(query, p.Title, p.Price, p.ImageURL, p.StockCount, p.CategoryID, productID, sellerID)
+	return err
+}
+
+func DeleteProduct(db *sql.DB, productID, sellerID string) error {
+	_, err := db.Exec("UPDATE products SET is_active = false WHERE product_id = $1 AND seller_id = $2", productID, sellerID)
+	return err
+}

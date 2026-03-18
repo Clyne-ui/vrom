@@ -80,6 +80,8 @@ func main() {
 	mux.HandleFunc("/request-password-reset", vrom_http.HandleRequestPasswordReset(db))
 	mux.HandleFunc("/reset-password", vrom_http.HandleResetPassword(db))
 	mux.HandleFunc("/profile", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleProfile(db)))
+	mux.HandleFunc("/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleUpdateProfile(db)))
+	mux.HandleFunc("/profile/statement", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleGetStatement(db)))
 	mux.HandleFunc("/profile/history/clear", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteHistory(db)))
 	mux.HandleFunc("/delete-account", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
 	mux.HandleFunc("/ride/delete-account", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
@@ -104,6 +106,8 @@ func main() {
 	mux.HandleFunc("/ride/seller/shop/create", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleCreateShop(db)))
 	mux.HandleFunc("/seller/product/upload", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleUploadProduct(db)))
 	mux.HandleFunc("/ride/seller/product/upload", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleUploadProduct(db)))
+	mux.HandleFunc("/seller/product/edit", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleEditProduct(db)))
+	mux.HandleFunc("/seller/product/delete", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleDeleteProduct(db)))
 	mux.HandleFunc("/seller/stock/order", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleOrderStock(db)))
 	mux.HandleFunc("/order/create", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleCreateOrder(db)))
 	mux.HandleFunc("/ride/order/create", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleCreateOrder(db)))
@@ -138,6 +142,30 @@ func main() {
 	aiAddr := "127.0.0.1:50052"
 	mux.HandleFunc("/ai/support", vrom_http.HandleSupportChat(aiAddr))
 	mux.HandleFunc("/ai/eta", vrom_http.HandlePredictETA(aiAddr))
+
+	// --- 7. OPERATIONS CONTROL CENTER (OCC) ---
+	// SSE Streams (Cannot be wrapped in standard middleware if it buffers, but our AdminOnly is fine)
+	mux.HandleFunc("/occ/stream/financials", middleware.AdminOnly(db, vrom_http.HandleOCCFinancialStream(db)))
+	mux.HandleFunc("/occ/stream/health", middleware.AdminOnly(db, vrom_http.HandleOCCHealthStream()))
+	// Analytics
+	mux.HandleFunc("/occ/analytics/financials", middleware.AdminOnly(db, vrom_http.HandleOCCGetFinancials(db)))
+	mux.HandleFunc("/occ/analytics/escrow", middleware.AdminOnly(db, vrom_http.HandleOCCGetEscrow(db)))
+	// CRM
+	mux.HandleFunc("/occ/crm/search", middleware.AdminOnly(db, vrom_http.HandleOCCSearchUsers(db)))
+	mux.HandleFunc("/occ/crm/history", middleware.AdminOnly(db, vrom_http.HandleOCCGetUserHistory(db)))
+	// Kill Switch
+	mux.HandleFunc("/occ/admin/suspend", middleware.AdminOnly(db, vrom_http.HandleOCCSuspendUser(db)))
+	mux.HandleFunc("/occ/admin/unsuspend", middleware.AdminOnly(db, vrom_http.HandleOCCUnsuspendUser(db)))
+	// Disputes
+	mux.HandleFunc("/occ/disputes", middleware.AdminOnly(db, vrom_http.HandleOCCGetDisputes(db)))
+	mux.HandleFunc("/occ/disputes/resolve", middleware.AdminOnly(db, vrom_http.HandleOCCResolveDispute(db)))
+	// Audit & Leaderboard
+	mux.HandleFunc("/occ/audit/log", middleware.AdminOnly(db, vrom_http.HandleOCCGetAuditLog(db)))
+	mux.HandleFunc("/occ/leaderboard", middleware.AdminOnly(db, vrom_http.HandleOCCRiderLeaderboard(db)))
+	// Content Queue
+	mux.HandleFunc("/occ/content/queue", middleware.AdminOnly(db, vrom_http.HandleOCCGetContentQueue(db)))
+	mux.HandleFunc("/occ/content/approve", middleware.AdminOnly(db, vrom_http.HandleOCCApproveContent(db)))
+	mux.HandleFunc("/occ/content/reject", middleware.AdminOnly(db, vrom_http.HandleOCCRejectContent(db)))
 
 	// Senior Logger Middleware
 	loggingMiddleware := func(next http.Handler) http.Handler {

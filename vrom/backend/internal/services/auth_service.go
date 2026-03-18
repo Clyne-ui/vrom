@@ -113,3 +113,22 @@ func RevokeToken(tokenString string) error {
 	// Add to blacklist with TTL
 	return redisClient.Set(context.Background(), "blacklisted:"+tokenString, "true", expiration).Err()
 }
+
+// RevokeUserTokens marks a userID as suspended in Redis so any valid token
+// they hold will be rejected at the middleware level.
+func RevokeUserTokens(userID string) {
+	if redisClient == nil {
+		return
+	}
+	// We store a suspended flag for 7 days (max refresh token lifetime)
+	redisClient.Set(context.Background(), "suspended:"+userID, "true", 7*24*time.Hour)
+}
+
+// IsUserSuspended checks if a user has been emergency-suspended via the OCC.
+func IsUserSuspended(userID string) bool {
+	if redisClient == nil {
+		return false
+	}
+	val, _ := redisClient.Exists(context.Background(), "suspended:"+userID).Result()
+	return val > 0
+}

@@ -51,6 +51,25 @@ CREATE TABLE compliance_requirements (
     description TEXT
 );
 
+CREATE TABLE ai_content_flags (
+    flag_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES products(product_id),
+    reason TEXT,
+    status TEXT DEFAULT 'pending', -- pending, approved, rejected
+    flagged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE occ_audit_log (
+    log_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    admin_email TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_id TEXT,
+    ip_address TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS ai_flagged BOOLEAN DEFAULT FALSE;
+
 CREATE TABLE user_compliance_data (
     data_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,

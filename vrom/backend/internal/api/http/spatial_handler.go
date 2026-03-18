@@ -169,16 +169,27 @@ func HandleRequestRide(db *sql.DB, rustAddr string) http.HandlerFunc {
 		}
 
 		// Call repository — it enforces wallet balance check and locks escrow
-		// NO OTP: rides are completed via GPS verification, not OTP
 		tripID, err := repository.RequestRide(db, customerEmail, input, estimatedPrice, riderID)
 		if err != nil {
-			// Surface the wallet insufficient error cleanly
-			if strings.Contains(err.Error(), "insufficient wallet balance") {
+			// Phase 15: Handle payment required via STK Push
+			if strings.Contains(err.Error(), "PAYMENT_REQUIRED") {
+				// Fetch user phone for STK Push
+				var phone string
+				db.QueryRow("SELECT phone_number FROM users WHERE email = $1", customerEmail).Scan(&phone)
+
+				// Trigger STK Push (Async prompt on phone)
+				// We use a specific reference format: "TRIP_<id>"
+				payRef := fmt.Sprintf("TRIP_%s", tripID)
+				services.InitiateSTKPush(phone, customerEmail, estimatedPrice, payRef)
+
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusPaymentRequired)
-				json.NewEncoder(w).Encode(map[string]string{
-					"status":  "Payment Required",
-					"message": err.Error(),
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status":      "Payment Prompt Sent 📲",
+					"trip_id":     tripID,
+					"fare_kes":    estimatedPrice,
+					"message":     "Your wallet balance is low. We've sent an M-Pesa prompt to your phone to secure this ride.",
+					"reference":   payRef,
 				})
 				return
 			}
