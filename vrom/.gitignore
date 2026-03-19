@@ -18,7 +18,7 @@ Thumbs.db
 *.key
 vrom-firebase-adminsdk.json
 **/vrom-firebase-adminsdk.json
-vrom/backend/vrom.exe
+
 
 # --- Go (Backend) ---
 backend/vrom

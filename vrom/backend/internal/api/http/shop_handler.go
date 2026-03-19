@@ -14,6 +14,7 @@ import (
 	"vrom-backend/internal/services"
 	"vrom-backend/internal/utils"
 	"vrom-backend/pb"
+	"vrom-backend/internal/api/websocket"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -190,14 +191,32 @@ func HandleCreateOrder(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Fetch the SellerID from the DB using the ProductID to notify them
+		var sellerID string
+		_ = db.QueryRow("SELECT seller_id FROM products WHERE product_id = $1", req.ProductID).Scan(&sellerID)
+
+		// Notify the Seller via WebSocket
+		if websocket.GlobalHub != nil && sellerID != "" {
+			go func() {
+				notification := map[string]interface{}{
+					"type":     "new_order",
+					"order_id": orderID,
+					"message":  "You have a new order!",
+					"amount":   total,
+				}
+				// Use context.Background() since this is non-blocking async
+				websocket.GlobalHub.SendToUser(context.Background(), sellerID, notification)
+			}()
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "Success",
-			"order_id": orderID,
-			"total_kes": total,
+			"status":       "Success",
+			"order_id":     orderID,
+			"total_kes":    total,
 			"shipping_kes": shipping,
 			"delivery_otp": otp,
-			"message": "Order placed! A rider will be notified.",
+			"message":      "Order placed! A rider will be notified.",
 		})
 	}
 }
@@ -273,8 +292,16 @@ func HandleSellerApproveOrder(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Send Push Notification to assigned rider for the delivery
+		// Send Push Notification & WebSocket to assigned rider for the delivery
 		go func() {
+			if websocket.GlobalHub != nil {
+				websocket.GlobalHub.SendToUser(context.Background(), riderID, map[string]interface{}{
+					"type":     "NEW_DELIVERY",
+					"order_id": req.OrderID,
+					"message":  fmt.Sprintf("Pick up delivery from %s for KES 150.00", email),
+				})
+			}
+
 			token, err := repository.GetFCMToken(db, riderID)
 			if err == nil && token != "" {
 				services.SendPushNotification(context.Background(), token, 
@@ -282,7 +309,7 @@ func HandleSellerApproveOrder(db *sql.DB) http.HandlerFunc {
 					fmt.Sprintf("Pick up from %s for KES 150.00", email),
 					map[string]string{
 						"order_id": req.OrderID,
-						"type": "NEW_ORDER",
+						"type":     "NEW_ORDER",
 					},
 				)
 			}

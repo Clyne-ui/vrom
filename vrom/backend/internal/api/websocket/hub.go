@@ -26,24 +26,29 @@ type Hub struct {
 	RedisClient *redis.Client
 }
 
+// GlobalHub allows cross-package access to push realtime events
+var GlobalHub *Hub
+
 // NotificationMessage represents a cross-server message.
 type NotificationMessage struct {
 	TargetUserID string      `json:"target_user_id"`
 	Payload      interface{} `json:"payload"`
 }
 
-func NewHub(redisURL string) *Hub {
+// NewHub creates and returns a new Hub
+func NewHub(redisAddr string) *Hub {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: redisURL, // e.g. "localhost:6379"
+		Addr: redisAddr, // e.g. "localhost:6379"
 	})
 
-	return &Hub{
+	GlobalHub = &Hub{
 		Broadcast:   make(chan []byte),
 		Register:    make(chan *Client),
 		Unregister:  make(chan *Client),
 		Clients:     make(map[string]map[*Client]bool),
 		RedisClient: rdb,
 	}
+	return GlobalHub
 }
 
 // Run starts the Hub's main loop to handle registrations and cross-server Redis messages.

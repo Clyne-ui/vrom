@@ -3,6 +3,7 @@ package websocket
 import (
 	"log"
 	"net/http"
+	"vrom-backend/internal/services"
 
 	"github.com/gorilla/websocket"
 )
@@ -16,13 +17,18 @@ var upgrader = websocket.Upgrader{
 
 // ServeWs handles websocket requests from the peer.
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	// For now, we expect the client to pass their User ID in a query parameter like ?user_id=123
-	// In production, this should be extracted securely from a JWT Authorization header.
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		http.Error(w, "user_id is required", http.StatusBadRequest)
+	tokenString := r.URL.Query().Get("token")
+	if tokenString == "" {
+		http.Error(w, "token is required in query params", http.StatusUnauthorized)
 		return
 	}
+
+	claims, err := services.ValidateToken(tokenString)
+	if err != nil {
+		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+	userID := claims.UserID
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

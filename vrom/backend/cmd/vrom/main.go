@@ -66,7 +66,7 @@ func main() {
 	vrom_http.InitSpatialService(wsHub.RedisClient)
 
 	// --- 0. WEBSOCKET ROUTE ---
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ws/rider", func(w http.ResponseWriter, r *http.Request) {
 		websocket.ServeWs(wsHub, w, r)
 	})
 
