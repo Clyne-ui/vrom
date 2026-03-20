@@ -24,7 +24,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
 CREATE TYPE user_role AS ENUM ('customer', 'seller', 'rider', 'admin');
-CREATE TYPE order_status AS ENUM ('pending', 'paid_escrow', 'picked_up', 'delivered', 'disputed', 'cancelled');
+CREATE TYPE order_status AS ENUM ('pending', 'pending_payment', 'paid_escrow', 'picked_up', 'delivered', 'disputed', 'cancelled');
 CREATE TYPE order_type AS ENUM ('marketplace', 'service', 'ride');
 
 -- ==========================================
@@ -88,6 +88,13 @@ CREATE TABLE password_reset_tokens (
     used BOOLEAN DEFAULT FALSE
 );
 
+CREATE TABLE otps (
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+    code CHAR(4) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ==========================================
 -- 4. PROFILES (Sellers & Riders)
 -- ==========================================
@@ -110,7 +117,7 @@ CREATE TABLE seller_profiles (
 
 CREATE TABLE shops (
     shop_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    seller_id UUID REFERENCES seller_profiles(seller_id),
+    seller_id UUID REFERENCES seller_profiles(seller_id) ON DELETE CASCADE,
     shop_name TEXT NOT NULL,
     shop_image_url TEXT,
     shop_location GEOGRAPHY(POINT, 4326),
@@ -124,8 +131,8 @@ CREATE TABLE shops (
 -- ==========================================
 CREATE TABLE products (
     product_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    seller_id UUID REFERENCES seller_profiles(seller_id),
-    shop_id UUID REFERENCES shops(shop_id), -- Linked to a specific physical location
+    seller_id UUID REFERENCES seller_profiles(seller_id) ON DELETE CASCADE,
+    shop_id UUID REFERENCES shops(shop_id) ON DELETE CASCADE, -- Linked to a specific physical location
     title TEXT NOT NULL,
     price DECIMAL(12, 2) NOT NULL,
     currency TEXT DEFAULT 'KES',
@@ -137,7 +144,7 @@ CREATE TABLE products (
 CREATE TABLE trips (
     trip_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     buyer_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
-    rider_id UUID REFERENCES rider_profiles(rider_id),
+    rider_id UUID REFERENCES rider_profiles(rider_id) ON DELETE CASCADE,
     pickup_location GEOGRAPHY(POINT, 4326) NOT NULL,
     dropoff_location GEOGRAPHY(POINT, 4326) NOT NULL,
     pickup_address TEXT,
@@ -154,9 +161,9 @@ CREATE TABLE trips (
 CREATE TABLE orders (
     order_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     buyer_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
-    product_id UUID REFERENCES products(product_id),
-    seller_id UUID REFERENCES seller_profiles(seller_id),
-    rider_id UUID REFERENCES rider_profiles(rider_id),
+    product_id UUID REFERENCES products(product_id) ON DELETE CASCADE,
+    seller_id UUID REFERENCES seller_profiles(seller_id) ON DELETE CASCADE,
+    rider_id UUID REFERENCES rider_profiles(rider_id) ON DELETE CASCADE,
     total_amount DECIMAL(12, 2) NOT NULL,
     status order_status DEFAULT 'pending',
     delivery_otp CHAR(4) NOT NULL,
@@ -175,10 +182,20 @@ CREATE TABLE wallets (
 
 CREATE TABLE wallet_transactions (
     transaction_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    wallet_id UUID REFERENCES wallets(user_id),
-    order_id UUID REFERENCES orders(order_id),
+    wallet_id UUID REFERENCES wallets(user_id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(order_id) ON DELETE CASCADE,
     amount DECIMAL(15, 2) NOT NULL, 
     transaction_type TEXT NOT NULL, -- 'ESCROW_LOCK', 'FUNDS_RELEASE', 'WITHDRAWAL', 'REFUND'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_activities (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+    activity_type TEXT NOT NULL,
+    amount DECIMAL(15, 2),
+    description TEXT,
+    balance_after DECIMAL(15, 2),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

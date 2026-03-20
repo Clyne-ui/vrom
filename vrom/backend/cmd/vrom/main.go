@@ -31,6 +31,9 @@ func main() {
 
 	fmt.Println("✅ DATABASE CONNECTED")
 
+	// Run Auto-Migrations for missing tables
+	repository.InitDatabase(db)
+
 	// Initialize Kafka Producer
 	events.InitKafkaWriter("localhost:9092", "vrom.transactions.fraud_check")
 	defer events.Writer.Close()
