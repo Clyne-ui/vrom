@@ -48,6 +48,9 @@ func RegisterUser(db *sql.DB, u models.User) (string, error) {
 			return "", err
 		}
 		fmt.Printf("✅ Customer OTP for %s: %s\n", u.Email, otpCode)
+		
+		// Asynchronously send the real email!
+		go utils.SendEmail(u.Email, "Welcome to Vrom! Your OTP", fmt.Sprintf("Your Vrom registration OTP is: %s", otpCode))
 	}
 
 	return userID, tx.Commit()

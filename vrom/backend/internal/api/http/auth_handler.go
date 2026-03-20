@@ -71,9 +71,15 @@ func HandleLogin(db *sql.DB) http.HandlerFunc {
 		}
 
 		var storedHash, fullName, userID, role string
-		err := db.QueryRow("SELECT password_hash, full_name, user_id, role FROM users WHERE email = $1", credentials.Email).Scan(&storedHash, &fullName, &userID, &role)
+		var isVerified bool
+		err := db.QueryRow("SELECT password_hash, full_name, user_id, role, is_verified FROM users WHERE email = $1", credentials.Email).Scan(&storedHash, &fullName, &userID, &role, &isVerified)
 		if err != nil {
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
+
+		if role == "customer" && !isVerified {
+			http.Error(w, "Account not verified! Please enter your OTP at /verify-otp to activate your account.", http.StatusForbidden)
 			return
 		}
 
@@ -172,6 +178,9 @@ func HandleRequestPasswordReset(db *sql.DB) http.HandlerFunc {
 
 		// In a real app, you would EMAIL this token. For local testing, we print to terminal.
 		fmt.Printf("🛡️ PASSWORD RESET TOKEN for %s: %s\n", req.Email, token)
+		
+		// Asynchronously send the real email!
+		go utils.SendEmail(req.Email, "Password Reset Code", fmt.Sprintf("Your Vrom Password Reset Code is: %s", token))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
