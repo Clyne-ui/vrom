@@ -41,7 +41,10 @@ func InitDatabase(db *sql.DB) {
 			flagged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)`)
 
-	// 4. Update order_status ENUM to include 'pending_payment'
+	// 4. Trips Table enhancements (OTP)
+	_, _ = db.Exec("ALTER TABLE trips ADD COLUMN IF NOT EXISTS delivery_otp CHAR(4)")
+
+	// 5. Update order_status ENUM to include 'pending_payment'
 	// Note: Postgres doesn't support IF NOT EXISTS for ADD VALUE easily in a single line,
 	// so we use a small block to check first.
 	_, _ = db.Exec(`

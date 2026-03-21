@@ -96,8 +96,14 @@ func main() {
 	mux.HandleFunc("/wallet/deposit", middleware.RequireRole(db, []string{"customer"}, vrom_http.HandleDeposit(db)))
 	mux.HandleFunc("/ride/wallet/deposit", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeposit(db)))
 	mux.HandleFunc("/wallet/verify", middleware.RequireRole(db, []string{"customer"}, vrom_http.HandleVerifyPayment(db)))
+	mux.HandleFunc("/paystack-webhook", vrom_http.HandlePaystackWebhook(db)) // No Auth: verify via HMAC
 	mux.HandleFunc("/wallet/paystack/webhook", vrom_http.HandlePaystackWebhook(db)) // No Auth: verify via HMAC
 	mux.HandleFunc("/wallet/withdraw", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleWithdrawToMpesa(db)))
+	mux.HandleFunc("/user/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleUpdateProfile(db)))
+	mux.HandleFunc("/user/account/delete", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
+	mux.HandleFunc("/user/statement", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleGetDetailedStatement(db)))
+	mux.HandleFunc("/user/history/trips", middleware.RequireRole(db, []string{"customer", "rider"}, vrom_http.HandleGetTripHistory(db)))
+	mux.HandleFunc("/user/history/orders", middleware.RequireRole(db, []string{"customer", "seller"}, vrom_http.HandleGetOrderHistory(db)))
 
 	mux.HandleFunc("/media/upload", vrom_http.HandleUploadImage(db))
 

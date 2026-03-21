@@ -301,29 +301,29 @@ func CompleteOrder(db *sql.DB, orderID, riderID, inputOTP string) (float64, floa
 	return riderShare, sellerShare, nil
 }
 
-func AuthorizeOrderPayment(db *sql.DB, orderID string) error {
+func AuthorizeOrderPayment(db *sql.DB, orderID string) (string, float64, error) {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 	defer tx.Rollback()
 
 	var amount float64
-	var buyerID string
-	err = tx.QueryRowContext(ctx, "SELECT total_amount, buyer_id FROM orders WHERE order_id = $1 AND status = 'pending_payment' FOR UPDATE", orderID).Scan(&amount, &buyerID)
+	var buyerID, sellerID string
+	err = tx.QueryRowContext(ctx, "SELECT total_amount, buyer_id, seller_id FROM orders WHERE order_id = $1 AND status = 'pending_payment' FOR UPDATE", orderID).Scan(&amount, &buyerID, &sellerID)
 	if err != nil {
-		return fmt.Errorf("order not found or already paid")
+		return "", 0, fmt.Errorf("order not found or already paid")
 	}
 
 	_, err = tx.ExecContext(ctx, "UPDATE wallets SET locked_funds = locked_funds + $1 WHERE user_id = $2", amount, buyerID)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 
 	_, err = tx.ExecContext(ctx, "UPDATE orders SET status = 'paid_escrow' WHERE order_id = $1", orderID)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 
 	_, err = tx.ExecContext(ctx, `
@@ -331,8 +331,12 @@ func AuthorizeOrderPayment(db *sql.DB, orderID string) error {
 		VALUES ($1, $2, $3, 'ESCROW_LOCK')`,
 		buyerID, orderID, amount)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", 0, err
+	}
+
+	return sellerID, amount, nil
 }

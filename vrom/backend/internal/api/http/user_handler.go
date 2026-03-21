@@ -1,16 +1,17 @@
 package http
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"vrom-backend/internal/api/websocket"
 	"vrom-backend/internal/events"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
-	//"vrom-backend/internal/utils"
 )
 
 func HandleProfile(db *sql.DB) http.HandlerFunc {
@@ -291,14 +292,37 @@ func HandlePaystackWebhook(db *sql.DB) http.HandlerFunc {
 			// Handle Trip/Order Authorizations based on Reference Prefix
 			if strings.HasPrefix(ref, "TRIP_") {
 				tripID := strings.TrimPrefix(ref, "TRIP_")
-				if err := repository.AuthorizeTripPayment(db, tripID); err == nil {
-					fmt.Printf("✅ Webhook: Trip %s authorized and secured.\n", tripID)
+				if riderID, fare, err := repository.AuthorizeTripPayment(db, tripID); err == nil {
+					fmt.Printf("✅ Webhook: Trip %s authorized. Notifying Rider %s\n", tripID, riderID)
+					
+					// Notify Rider via Push
+					go func() {
+						token, err := repository.GetFCMToken(db, riderID)
+						if err == nil && token != "" {
+							services.SendPushNotification(context.Background(), token,
+								"Payment Secured! 💰",
+								fmt.Sprintf("Customer paid KES %.2f. You can now start the trip.", fare),
+								map[string]string{"trip_id": tripID, "type": "PAYMENT_CONFIRMED"},
+							)
+						}
+					}()
 					return
 				}
 			} else if strings.HasPrefix(ref, "ORDER_") {
 				orderID := strings.TrimPrefix(ref, "ORDER_")
-				if err := repository.AuthorizeOrderPayment(db, orderID); err == nil {
-					fmt.Printf("✅ Webhook: Order %s authorized and secured.\n", orderID)
+				if sellerID, amount, err := repository.AuthorizeOrderPayment(db, orderID); err == nil {
+					fmt.Printf("✅ Webhook: Order %s authorized. Notifying Seller %s\n", orderID, sellerID)
+					
+					// Notify Seller via WebSocket
+					if websocket.GlobalHub != nil {
+						notification := map[string]interface{}{
+							"type":     "payment_confirmed",
+							"order_id": orderID,
+							"amount":   amount,
+							"message":  "A customer has just paid for an order. Check your dashboard!",
+						}
+						websocket.GlobalHub.SendToUser(context.Background(), sellerID, notification)
+					}
 					return
 				}
 			}
@@ -341,6 +365,43 @@ func HandleUpdateProfile(db *sql.DB) http.HandlerFunc {
 }
 
 func HandleGetStatement(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		email := r.Header.Get("X-User-Email")
+		var userID string
+		db.QueryRow("SELECT user_id FROM users WHERE email = $1", email).Scan(&userID)
+
+		statement, err := repository.GetDetailedStatement(db, userID)
+		if err != nil {
+			http.Error(w, "Could not fetch statement", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(statement)
+	}
+}
+func HandleDeleteAccount(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		email := r.Header.Get("X-User-Email")
+		if email == "" {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+
+		if err := repository.DeleteAccount(db, email); err != nil {
+			http.Error(w, "Failed to delete account", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "Success",
+			"message": "Your account and all associated data have been permanently deleted.",
+		})
+	}
+}
+
+func HandleGetDetailedStatement(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := r.Header.Get("X-User-Email")
 		var userID string

@@ -180,16 +180,17 @@ func HandleRequestRide(db *sql.DB, rustAddr string) http.HandlerFunc {
 				// Trigger STK Push (Async prompt on phone)
 				// We use a specific reference format: "TRIP_<id>"
 				payRef := fmt.Sprintf("TRIP_%s", tripID)
-				services.InitiateSTKPush(phone, customerEmail, estimatedPrice, payRef)
+				resp, _ := services.InitiateSTKPush(phone, customerEmail, estimatedPrice, payRef)
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusPaymentRequired)
 				json.NewEncoder(w).Encode(map[string]interface{}{
-					"status":      "Payment Prompt Sent 📲",
-					"trip_id":     tripID,
-					"fare_kes":    estimatedPrice,
-					"message":     "Your wallet balance is low. We've sent an M-Pesa prompt to your phone to secure this ride.",
-					"reference":   payRef,
+					"status":       "Payment Prompt Sent 📲",
+					"trip_id":      tripID,
+					"fare_kes":     estimatedPrice,
+					"message":      "Your wallet balance is low. We've sent an M-Pesa prompt to your phone. If you don't see it, use the checkout link to simulate success.",
+					"reference":    payRef,
+					"checkout_url": resp.Data.AuthorizationURL,
 				})
 				return
 			}
@@ -214,11 +215,10 @@ func HandleRequestRide(db *sql.DB, rustAddr string) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":      "Ride Found & Escrow Secured ✅",
+			"status":      "Success",
 			"trip_id":     tripID,
 			"fare_kes":    estimatedPrice,
-			"distance_km": route.TotalDistance,
-			"message":     "Your fare has been secured from your wallet. The rider is on their way!",
+			"message":     "Ride request successful! An STK push has been sent to your phone.",
 		})
 	}
 }

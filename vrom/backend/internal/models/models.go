@@ -153,17 +153,20 @@ type AdminUserView struct {
 }
 
 type TripSummary struct {
-	TripID    string  `json:"trip_id"`
-	Status    string  `json:"status"`
-	Fare      float64 `json:"fare"`
-	CreatedAt string  `json:"created_at"`
+	TripID         string  `json:"trip_id"`
+	Status         string  `json:"status"`
+	Fare           float64 `json:"fare"`
+	CreatedAt      string  `json:"created_at"`
+	PickupAddress  string  `json:"pickup_address"`
+	DropoffAddress string  `json:"dropoff_address"`
 }
 
 type OrderSummary struct {
-	OrderID   string  `json:"order_id"`
-	Status    string  `json:"status"`
-	Amount    float64 `json:"amount"`
-	CreatedAt string  `json:"created_at"`
+	OrderID     string  `json:"order_id"`
+	Status      string  `json:"status"`
+	Amount      float64 `json:"amount"`
+	CreatedAt   string  `json:"created_at"`
+	ProductName string  `json:"product_name"`
 }
 
 type AdminUserHistory struct {

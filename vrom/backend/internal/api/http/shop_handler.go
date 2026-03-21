@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"vrom-backend/internal/api/websocket"
 	"vrom-backend/internal/models"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
 	"vrom-backend/internal/utils"
 	"vrom-backend/pb"
-	"vrom-backend/internal/api/websocket"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -39,7 +39,7 @@ func HandleCreateShop(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "Success",
+			"status":  "Success",
 			"shop_id": shopID,
 			"message": fmt.Sprintf("Shop branch '%s' is now open!", s.ShopName),
 		})
@@ -145,7 +145,7 @@ func HandleUploadProduct(db *sql.DB) http.HandlerFunc {
 			"product_id": productID,
 			"message":    "Product uploaded successfully!",
 		}
-		
+
 		if len(autoTags) > 0 {
 			response["ai_seo_tags"] = autoTags
 		}
@@ -174,16 +174,18 @@ func HandleCreateOrder(db *sql.DB) http.HandlerFunc {
 				db.QueryRow("SELECT phone_number FROM users WHERE email = $1", email).Scan(&phone)
 
 				payRef := fmt.Sprintf("ORDER_%s", orderID)
-				services.InitiateSTKPush(phone, email, total, payRef)
+				resp, _ := services.InitiateSTKPush(phone, email, total, payRef)
 
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusPaymentRequired)
+				w.WriteHeader(http.StatusPaymentRequired) // Added status header
 				json.NewEncoder(w).Encode(map[string]interface{}{
-					"status":      "Payment Prompt Sent 📲",
-					"order_id":    orderID,
-					"total_kes":   total,
-					"message":     "Your wallet balance is low. We've sent an M-Pesa prompt to your phone to secure this order.",
-					"reference":   payRef,
+					"status":       "Payment Prompt Sent 📲",
+					"order_id":     orderID, // Changed from trip_id
+					"delivery_otp": otp,     // New field for verification
+					"total_kes":    total,   // Changed from fare_kes
+					"message":      "Your wallet balance is low. We've sent an M-Pesa prompt to your phone. If you don't see it, use the checkout link to simulate success.",
+					"reference":    payRef,
+					"checkout_url": resp.Data.AuthorizationURL,
 				})
 				return
 			}
@@ -243,9 +245,9 @@ func HandleSellerRejectOrder(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "Success",
-			"message": "Order rejected. Customer refunded.",
-			"refunded_kes": refund,
+			"status":             "Success",
+			"message":            "Order rejected. Customer refunded.",
+			"refunded_kes":       refund,
 			"restocked_quantity": quantity,
 		})
 	}
@@ -282,8 +284,8 @@ func HandleSellerApproveOrder(db *sql.DB) http.HandlerFunc {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				json.NewEncoder(w).Encode(map[string]interface{}{
-					"status":  "No Rider Available",
-					"message": "No riders are currently online near your shop. Your order is still active — please wait and try approving again shortly.",
+					"status":   "No Rider Available",
+					"message":  "No riders are currently online near your shop. Your order is still active — please wait and try approving again shortly.",
 					"order_id": req.OrderID,
 				})
 				return
@@ -304,8 +306,8 @@ func HandleSellerApproveOrder(db *sql.DB) http.HandlerFunc {
 
 			token, err := repository.GetFCMToken(db, riderID)
 			if err == nil && token != "" {
-				services.SendPushNotification(context.Background(), token, 
-					"New Delivery Order! 📦", 
+				services.SendPushNotification(context.Background(), token,
+					"New Delivery Order! 📦",
 					fmt.Sprintf("Pick up from %s for KES 150.00", email),
 					map[string]string{
 						"order_id": req.OrderID,
@@ -317,10 +319,10 @@ func HandleSellerApproveOrder(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":      "Order Approved ✅",
-			"message":     fmt.Sprintf("Rider %s has been assigned and is on their way to pick up the order.", riderName),
-			"rider_id":    riderID,
-			"rider_name":  riderName,
+			"status":     "Order Approved ✅",
+			"message":    fmt.Sprintf("Rider %s has been assigned and is on their way to pick up the order.", riderName),
+			"rider_id":   riderID,
+			"rider_name": riderName,
 		})
 	}
 }
@@ -348,9 +350,9 @@ func HandleCompleteOrder(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "Success",
-			"message": "Delivery completed!",
-			"earned_kes": riderShare,
+			"status":            "Success",
+			"message":           "Delivery completed!",
+			"earned_kes":        riderShare,
 			"seller_payout_kes": sellerShare,
 		})
 	}
@@ -421,10 +423,38 @@ func HandleEditProduct(db *sql.DB) http.HandlerFunc {
 
 		email := r.Header.Get("X-User-Email")
 		var sellerID string
-		db.QueryRow("SELECT user_id FROM users WHERE email = $1", email).Scan(&sellerID)
+		db.QueryRow("SELECT user_id FROM users WHERE email = $1 AND role = 'seller'", email).Scan(&sellerID)
+
+		// --- 🧠 AI Content Moderation for Edits ---
+		if p.Title != "" {
+			conn, err := grpc.NewClient("127.0.0.1:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err == nil {
+				client := pb.NewAIServiceClient(conn)
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+
+				modRes, err := client.ModerateContent(ctx, &pb.ContentRequest{
+					Id:   productID,
+					Text: p.Title,
+				})
+
+				if err == nil && !modRes.IsApproved {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					json.NewEncoder(w).Encode(map[string]interface{}{
+						"status":  "Edit Blocked ✋",
+						"reason":  modRes.Reason,
+						"message": "The updated title violates guidelines. Changes not saved.",
+					})
+					conn.Close()
+					return
+				}
+				conn.Close()
+			}
+		}
 
 		if err := repository.UpdateProduct(db, productID, sellerID, p); err != nil {
-			http.Error(w, "Update failed", http.StatusInternalServerError)
+			http.Error(w, "Update failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 

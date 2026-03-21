@@ -8,7 +8,6 @@ import (
 )
 
 // RequestRide: Validates wallet balance, locks funds in escrow, creates the trip record.
-// NO OTP is generated for rides — that is only for product delivery.
 func RequestRide(db *sql.DB, customerEmail string, input models.RideRequestInput, estimatedPrice float64, riderID string) (string, error) {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
@@ -58,13 +57,18 @@ func RequestRide(db *sql.DB, customerEmail string, input models.RideRequestInput
 	}
 
 	if status == "pending_payment" {
-		return tripID, fmt.Errorf("PAYMENT_REQUIRED: Insufficient balance for trip %s", tripID)
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed to create trip: %v", err)
+		// We still return the trip ID so the handler knows which ID to use for Paystack reference
+		if err := tx.Commit(); err != nil {
+			return "", err
+		}
+		return tripID, fmt.Errorf("PAYMENT_REQUIRED")
 	}
 
-	return tripID, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+
+	return tripID, nil
 }
 
 func GetActiveTrip(db *sql.DB, email string) (string, string, float64, float64, float64, error) {
@@ -95,6 +99,8 @@ func UpdateTripStatus(db *sql.DB, tripID string, fromStatus, toStatus string) er
 	return nil
 }
 
+// CompleteTrip: Verifies the rider is physically at the destination BEFORE releasing funds.
+// This is GPS-based — no OTP involved.
 // CompleteTrip: Verifies the rider is physically at the destination BEFORE releasing funds.
 // This is GPS-based — no OTP involved.
 // Geofence threshold: ~500 meters (0.005 degrees ≈ 500m)
@@ -228,33 +234,35 @@ func CancelRide(db *sql.DB, tripID, customerEmail string) (float64, string, erro
 // AuthorizeTripPayment handles the "Lipa Na M-Pesa" success for a trip.
 // It moves the incoming payment directly into escrow since the trip was 
 // already created in 'pending_payment' status.
-func AuthorizeTripPayment(db *sql.DB, tripID string) error {
+func AuthorizeTripPayment(db *sql.DB, tripID string) (string, float64, error) {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 	defer tx.Rollback()
 
 	var amount float64
-	var buyerID string
+	var buyerID, riderID string
 	// Verify trip exists and is blocking on payment
-	err = tx.QueryRowContext(ctx, "SELECT actual_fare, buyer_id FROM trips WHERE trip_id = $1 AND status = 'pending_payment' FOR UPDATE", tripID).Scan(&amount, &buyerID)
+	err = tx.QueryRowContext(ctx, "SELECT actual_fare, buyer_id, rider_id FROM trips WHERE trip_id = $1 AND status = 'pending_payment' FOR UPDATE", tripID).Scan(&amount, &buyerID, &riderID)
 	if err != nil {
-		return fmt.Errorf("trip not found or already paid")
+		return "", 0, fmt.Errorf("trip not found or already paid")
 	}
 
-	// Since this is a fresh deposit confirmed via webhook, we credit the balance THEN lock it to escrow.
-	// This ensures the ledger (user_activities) remains accurate.
 	_, err = tx.ExecContext(ctx, "UPDATE wallets SET locked_funds = locked_funds + $1 WHERE user_id = $2", amount, buyerID)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 
 	_, err = tx.ExecContext(ctx, "UPDATE trips SET status = 'pending' WHERE trip_id = $1", tripID)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", 0, err
+	}
+
+	return riderID, amount, nil
 }

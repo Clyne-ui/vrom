@@ -75,6 +75,56 @@ func GetUserHistory(db *sql.DB, userID string) ([]models.Activity, error) {
 	return history, nil
 }
 
+func GetTripHistory(db *sql.DB, userID string) ([]models.TripSummary, error) {
+	query := `
+		SELECT trip_id::text, status, actual_fare, created_at,
+		       pickup_address, dropoff_address
+		FROM trips 
+		WHERE buyer_id = $1 OR rider_id = $1
+		ORDER BY created_at DESC`
+	
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var trips []models.TripSummary
+	for rows.Next() {
+		var t models.TripSummary
+		if err := rows.Scan(&t.TripID, &t.Status, &t.Fare, &t.CreatedAt, &t.PickupAddress, &t.DropoffAddress); err != nil {
+			continue
+		}
+		trips = append(trips, t)
+	}
+	return trips, nil
+}
+
+func GetOrderHistory(db *sql.DB, userID string) ([]models.OrderSummary, error) {
+	query := `
+		SELECT o.order_id::text, o.status, o.total_amount, o.created_at, p.title
+		FROM orders o
+		JOIN products p ON o.product_id = p.product_id
+		WHERE o.buyer_id = $1 OR o.seller_id = $1
+		ORDER BY o.created_at DESC`
+	
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []models.OrderSummary
+	for rows.Next() {
+		var o models.OrderSummary
+		if err := rows.Scan(&o.OrderID, &o.Status, &o.Amount, &o.CreatedAt, &o.ProductName); err != nil {
+			continue
+		}
+		orders = append(orders, o)
+	}
+	return orders, nil
+}
+
 // UpdateFCMToken saves the latest Firebase device token for a user so we can send them push notifications.
 func UpdateFCMToken(db *sql.DB, userID, token string) error {
 	_, err := db.Exec("UPDATE users SET fcm_token = $1 WHERE user_id = $2", token, userID)
