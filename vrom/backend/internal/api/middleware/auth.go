@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"vrom-backend/internal/services"
@@ -19,7 +20,30 @@ func RequireRole(db *sql.DB, allowedRoles []string, next http.HandlerFunc) http.
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := services.ValidateToken(tokenString)
 		if err != nil {
+			// If system is under maintenance, even invalid tokens get the 503 instead of 401
+			// This prevents revealing system status vs auth status to unauthed users.
+			if services.IsMaintenanceMode() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]string{
+					"status":  "Under Maintenance 🚧",
+					"message": "Vrom is currently undergoing scheduled maintenance to improve our service. We'll be back online shortly!",
+				})
+				return
+			}
 			http.Error(w, "Invalid or expired session. Please login again.", http.StatusUnauthorized)
+			return
+		}
+
+		// 🧬 GLOBAL KILL SWITCH (Maintenance Mode)
+		// Admins can bypass this to use the OCC Dashboard during maintenance.
+		if services.IsMaintenanceMode() && claims.Role != "admin" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"status":  "Under Maintenance 🚧",
+				"message": "Vrom is currently undergoing scheduled maintenance to improve our service. We'll be back online shortly!",
+			})
 			return
 		}
 

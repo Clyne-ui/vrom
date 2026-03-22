@@ -132,3 +132,23 @@ func IsUserSuspended(userID string) bool {
 	val, _ := redisClient.Exists(context.Background(), "suspended:"+userID).Result()
 	return val > 0
 }
+
+// SetMaintenanceMode toggles the global "Maintenance Mode" (Kill Switch).
+func SetMaintenanceMode(active bool) error {
+	if redisClient == nil {
+		return errors.New("redis client not initialized")
+	}
+	if active {
+		return redisClient.Set(context.Background(), "system:maintenance_mode", "true", 0).Err()
+	}
+	return redisClient.Del(context.Background(), "system:maintenance_mode").Err()
+}
+
+// IsMaintenanceMode checks if the system is currently under maintenance.
+func IsMaintenanceMode() bool {
+	if redisClient == nil {
+		return false
+	}
+	val, _ := redisClient.Exists(context.Background(), "system:maintenance_mode").Result()
+	return val > 0
+}

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vrom OCC | Operations Control Center</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            /* Theme: Dark (Default) */
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --sidebar-color: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #3b82f6;
+            --accent-success: #10b981;
+            --accent-danger: #ef4444;
+            --accent-warning: #f59e0b;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --glass-blur: blur(12px);
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f8fafc;
+            --surface-color: rgba(255, 255, 255, 0.8);
+            --sidebar-color: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --accent-primary: #2563eb;
+            --accent-success: #059669;
+            --accent-danger: #dc2626;
+            --accent-warning: #d97706;
+            --border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- Sidebar --- */
+        aside {
+            width: 260px;
+            background-color: var(--sidebar-color);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--accent-primary);
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background-color: var(--accent-primary);
+            color: white;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        /* --- Main Content --- */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .system-health {
+            display: flex;
+            gap: 20px;
+        }
+
+        .health-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--surface-color);
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .dot { height: 8px; width: 8px; border-radius: 50%; background-color: var(--accent-success); }
+        .dot.offline { background-color: var(--accent-danger); }
+
+        /* --- Grid Layout --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .card {
+            background: var(--surface-color);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
+        .card-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
+        .card-trend { font-size: 12px; margin-top: 4px; color: var(--accent-success); }
+
+        /* --- Map Overlay --- */
+        #map-container {
+            height: 500px;
+            width: 100%;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            position: relative;
+        }
+
+        #map { height: 100%; width: 100%; z-index: 1; }
+
+        /* --- Controls --- */
+        .maintenance-module {
+            background: var(--surface-color);
+            border: 1px solid var(--accent-danger);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Switch Styling */
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--accent-danger); }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+        .btn {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+    </style>
+</head>
+<body>
+    <aside>
+        <div class="logo">
+            <span>🚀</span> Vrom OCC
+        </div>
+        <nav>
+            <div class="nav-item active" onclick="switchTab('dashboard')">🏠 Dashboard</div>
+            <div class="nav-item" onclick="switchTab('maps')">🗺️ Live Maps</div>
+            <div class="nav-item" onclick="switchTab('crm')">👥 User CRM</div>
+            <div class="nav-item" onclick="switchTab('disputes')">⚖️ Disputes</div>
+            <div class="nav-item" onclick="switchTab('logs')">📜 Audit Logs</div>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="theme-toggle" onclick="toggleTheme()">🌓 Toggle Mode</button>
+        </div>
+    </aside>
+
+    <main>
+        <header>
+            <div>
+                <h1>Command Center</h1>
+                <p style="color: var(--text-secondary)">Real-time operations overview</p>
+            </div>
+            <div class="system-health">
+                <div class="health-badge"><span class="dot" id="dot-go"></span> Go API: <span id="ping-go">0ms</span></div>
+                <div class="health-badge"><span class="dot" id="dot-rust"></span> Rust Matcher: <span id="ping-rust">0ms</span></div>
+                <div class="health-badge"><span class="dot" id="dot-python"></span> Python AI: <span id="ping-python">0ms</span></div>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="card">
+                <div class="card-title">GROSS MERCHANDISE VALUE (KES)</div>
+                <div class="card-value" id="stat-gmv">0.00</div>
+                <div class="card-trend">↑ 12.5% vs yesterday</div>
+            </div>
+            <div class="card">
+                <div class="card-title">NET VROM COMMISSION (KES)</div>
+                <div class="card-value" id="stat-commission">0.00</div>
+                <div class="card-trend">↑ 8.1% vs yesterday</div>
+            </div>
+            <div class="card">
+                <div class="card-title">ESCROW IN-FLIGHT</div>
+                <div class="card-value" id="stat-escrow">0.00</div>
+                <div class="card-trend" style="color: var(--text-secondary)">Current platform liability</div>
+            </div>
+        </div>
+
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+
+        <div class="card" style="border-color: var(--accent-danger)">
+            <h3 style="margin-bottom: 16px; color: var(--accent-danger)">🚨 System Overrides</h3>
+            <div class="maintenance-module">
+                <div>
+                    <h4 id="maintenance-title">Global Maintenance Mode</h4>
+                    <p style="font-size: 13px; color: var(--text-secondary)">Instantly take the infrastructure offline for all non-admins.</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="maintenance-toggle" onchange="toggleMaintenance()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </main>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- Core Application State ---
+        let currentTheme = 'dark';
+        let map;
+        const apiBase = "http://localhost:8080";
+
+        function toggleTheme() {
+            const body = document.documentElement;
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', currentTheme);
+        }
+
+        // --- SSE Data Streaming ---
+        function initSSE() {
+            // 1. Financial Stream
+            const financialEvent = new EventSource(`${apiBase}/occ/stream/financials`);
+            financialEvent.addEventListener('financials', (e) => {
+                const data = JSON.parse(e.data);
+                document.getElementById('stat-gmv').innerText = data.gmv.toLocaleString();
+                document.getElementById('stat-commission').innerText = data.commission.toLocaleString();
+                document.getElementById('stat-escrow').innerText = data.escrow_in_flight.toLocaleString();
+            });
+
+            // 2. Health Stream
+            const healthEvent = new EventSource(`${apiBase}/occ/stream/health`);
+            healthEvent.addEventListener('health', (e) => {
+                const data = JSON.parse(e.data);
+                updateHealth('go', data.go_api_ms);
+                updateHealth('rust', data.rust_ms);
+                updateHealth('python', data.python_ms);
+            });
+        }
+
+        function updateHealth(service, ms) {
+            const dot = document.getElementById(`dot-${service}`);
+            const text = document.getElementById(`ping-${service}`);
+            if (ms < 0) {
+                dot.classList.add('offline');
+                text.innerText = "OFFLINE";
+            } else {
+                dot.classList.remove('offline');
+                text.innerText = `${ms}ms`;
+            }
+        }
+
+        // --- Maintenance Controls ---
+        async function fetchMaintenanceStatus() {
+            try {
+                // NOTE: In production, these require valid Admin JWT.
+                // For this UI demo, we assume the user is logged in.
+                const res = await fetch(`${apiBase}/occ/admin/maintenance/status`);
+                const data = await res.json();
+                document.getElementById('maintenance-toggle').checked = data.maintenance_mode;
+            } catch (err) { console.error("Could not fetch maintenance status"); }
+        }
+
+        async function toggleMaintenance() {
+            const active = document.getElementById('maintenance-toggle').checked;
+            try {
+                // This would typically include Auth headers
+                const res = await fetch(`${apiBase}/occ/admin/maintenance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active })
+                });
+                const result = await res.json();
+                console.log("Maintenance Toggle Result:", result);
+            } catch (err) {
+                alert("Failed to toggle maintenance mode. Check Admin permissions.");
+                document.getElementById('maintenance-toggle').checked = !active;
+            }
+        }
+
+        // --- Leaflet Map Init ---
+        function initMap() {
+            map = L.map('map').setView([-1.286389, 36.817223], 13); // Default to Nairobi Central
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; Vrom Data Services'
+            }).addTo(map);
+
+            // Mock markers for the demo
+            L.marker([-1.286, 36.817]).addTo(map).bindPopup('<b>Active Dispatch</b><br>Rider ID: R-992').openPopup();
+        }
+
+        // Initialize everything
+        window.onload = () => {
+            initSSE();
+            initMap();
+            fetchMaintenanceStatus();
+        };
+
+        function switchTab(tab) {
+            console.log("Switching to tab:", tab);
+            // Tab switching logic would go here
+        }
+    </script>
+</body>
+</html>

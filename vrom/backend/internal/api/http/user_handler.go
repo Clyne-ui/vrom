@@ -194,27 +194,7 @@ func HandleWithdrawToMpesa(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func HandleDeleteHistory(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		email := r.Header.Get("X-User-Email")
-		if err := repository.DeleteHistory(db, email); err != nil {
-			http.Error(w, "Failed to clear history", http.StatusInternalServerError)
-			return
-		}
-		fmt.Fprint(w, "User activity history cleared.")
-	}
-}
 
-func HandleDeleteAccount(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		email := r.Header.Get("X-User-Email")
-		if err := repository.DeleteAccount(db, email); err != nil {
-			http.Error(w, "Failed to delete account", http.StatusInternalServerError)
-			return
-		}
-		fmt.Fprint(w, "Account deleted successfully.")
-	}
-}
 
 // HandleUpdateFCMToken allows mobile apps to register their Firebase Push Notification token.
 func HandleUpdateFCMToken(db *sql.DB) http.HandlerFunc {

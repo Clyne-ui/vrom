@@ -85,7 +85,7 @@ func main() {
 	mux.HandleFunc("/profile", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleProfile(db)))
 	mux.HandleFunc("/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleUpdateProfile(db)))
 	mux.HandleFunc("/profile/statement", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleGetStatement(db)))
-	mux.HandleFunc("/profile/history/clear", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteHistory(db)))
+
 	mux.HandleFunc("/delete-account", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
 	mux.HandleFunc("/ride/delete-account", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
 	mux.HandleFunc("/fcm/token", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleUpdateFCMToken(db)))
@@ -165,6 +165,8 @@ func main() {
 	// Kill Switch
 	mux.HandleFunc("/occ/admin/suspend", middleware.AdminOnly(db, vrom_http.HandleOCCSuspendUser(db)))
 	mux.HandleFunc("/occ/admin/unsuspend", middleware.AdminOnly(db, vrom_http.HandleOCCUnsuspendUser(db)))
+	mux.HandleFunc("/occ/admin/maintenance", middleware.AdminOnly(db, vrom_http.HandleOCCToggleMaintenance(db)))
+	mux.HandleFunc("/occ/admin/maintenance/status", middleware.AdminOnly(db, vrom_http.HandleOCCGetMaintenanceStatus()))
 	// Disputes
 	mux.HandleFunc("/occ/disputes", middleware.AdminOnly(db, vrom_http.HandleOCCGetDisputes(db)))
 	mux.HandleFunc("/occ/disputes/resolve", middleware.AdminOnly(db, vrom_http.HandleOCCResolveDispute(db)))
@@ -175,6 +177,10 @@ func main() {
 	mux.HandleFunc("/occ/content/queue", middleware.AdminOnly(db, vrom_http.HandleOCCGetContentQueue(db)))
 	mux.HandleFunc("/occ/content/approve", middleware.AdminOnly(db, vrom_http.HandleOCCApproveContent(db)))
 	mux.HandleFunc("/occ/content/reject", middleware.AdminOnly(db, vrom_http.HandleOCCRejectContent(db)))
+
+	// --- 8. STATIC DASHBOARD ---
+	fs := http.FileServer(http.Dir("./public"))
+	mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", fs))
 
 	// Senior Logger Middleware
 	loggingMiddleware := func(next http.Handler) http.Handler {

@@ -220,6 +220,46 @@ func HandleOCCUnsuspendUser(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func HandleOCCGetMaintenanceStatus() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status := services.IsMaintenanceMode()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"maintenance_mode": status,
+		})
+	}
+}
+
+func HandleOCCToggleMaintenance(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Active bool `json:"active"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+
+		if err := services.SetMaintenanceMode(req.Active); err != nil {
+			http.Error(w, "Failed to toggle maintenance mode", http.StatusInternalServerError)
+			return
+		}
+
+		adminEmail := r.Header.Get("X-User-Email")
+		action := "SYSTEM_MAINTENANCE_OFF"
+		if req.Active {
+			action = "SYSTEM_MAINTENANCE_ON"
+		}
+		repository.WriteAuditLog(db, adminEmail, action, "SYSTEM", r.RemoteAddr)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":           "Success",
+			"maintenance_mode": req.Active,
+		})
+	}
+}
+
 // ─────────────────────────────────────────────────
 // SECTION 5: DISPUTE RESOLUTION
 // ─────────────────────────────────────────────────
