@@ -1,0 +1,150 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Light Mode - Vrom Colors */
+:root {
+  /* Primary Colors */
+  --orange-primary: #FF8C42;
+  --navy-accent: #1A2A4A;
+  
+  /* Light Mode Palette */
+  --background: #FFFFFF;
+  --foreground: #1A2A4A;
+  --card: #F8F9FB;
+  --card-foreground: #1A2A4A;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A2A4A;
+  --primary: #FF8C42;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F0F4F9;
+  --secondary-foreground: #1A2A4A;
+  --muted: #E8EBF0;
+  --muted-foreground: #6B7280;
+  --accent: #FF8C42;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E7EB;
+  --input: #F3F4F6;
+  --ring: #FF8C42;
+  
+  /* Chart Colors */
+  --chart-1: #FF8C42;
+  --chart-2: #1A2A4A;
+  --chart-3: #3B82F6;
+  --chart-4: #10B981;
+  --chart-5: #F59E0B;
+  
+  --radius: 0.625rem;
+  
+  /* Sidebar */
+  --sidebar: #F8F9FB;
+  --sidebar-foreground: #1A2A4A;
+  --sidebar-primary: #FF8C42;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E8EBF0;
+  --sidebar-accent-foreground: #1A2A4A;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #FF8C42;
+}
+
+/* Dark Mode - Vrom Navy with Orange Accents */
+.dark {
+  --background: #0F1419;
+  --foreground: #E5E7EB;
+  --card: #1A2A4A;
+  --card-foreground: #E5E7EB;
+  --popover: #1A2A4A;
+  --popover-foreground: #E5E7EB;
+  --primary: #FF8C42;
+  --primary-foreground: #0F1419;
+  --secondary: #2D3E52;
+  --secondary-foreground: #E5E7EB;
+  --muted: #374658;
+  --muted-foreground: #9CA3AF;
+  --accent: #FF8C42;
+  --accent-foreground: #0F1419;
+  --destructive: #F87171;
+  --destructive-foreground: #0F1419;
+  --border: #2D3E52;
+  --input: #2D3E52;
+  --ring: #FF8C42;
+  
+  /* Chart Colors */
+  --chart-1: #FF8C42;
+  --chart-2: #3B82F6;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EC4899;
+  
+  /* Sidebar */
+  --sidebar: #1A2A4A;
+  --sidebar-foreground: #E5E7EB;
+  --sidebar-primary: #FF8C42;
+  --sidebar-primary-foreground: #0F1419;
+  --sidebar-accent: #2D3E52;
+  --sidebar-accent-foreground: #E5E7EB;
+  --sidebar-border: #2D3E52;
+  --sidebar-ring: #FF8C42;
+}
+
+@theme inline {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Monaco', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground transition-colors duration-300;
+  }
+}
+
+/* Glassmorphism Effects */
+.glass {
+  @apply backdrop-blur-md bg-background/80 border border-border;
+}
+
+.glass-dark {
+  @apply backdrop-blur-xl bg-card/40 border border-border/50;
+}
