@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, Lock, LogIn, Shield, Zap, Clock, Eye, EyeOff } from 'lucide-react'
+import { AlertTriangle, Lock, LogIn, Shield, Zap, Clock, Eye, X, CheckCircle, ShieldAlert } from 'lucide-react'
 
 interface AuditLog {
   id: string
@@ -22,129 +22,48 @@ interface Alert {
   title: string
   description: string
   timestamp: string
+  status: 'active' | 'resolved' | 'dismissed'
+  region?: string
 }
+
+const INITIAL_ALERTS: Alert[] = [
+  { id: 'ALT001', type: 'fraud', severity: 'critical', title: 'Potential Fraud Detected', description: 'Multiple failed transactions from same account within 10 minutes', timestamp: '2024-03-23 15:42:00', status: 'active', region: 'kenya' },
+  { id: 'ALT002', type: 'security', severity: 'high', title: 'Unusual Access Pattern', description: 'Admin account accessed from new location (unknown IP)', timestamp: '2024-03-23 15:35:00', status: 'active', region: 'global' },
+  { id: 'ALT003', type: 'anomaly', severity: 'medium', title: 'High Volume Anomaly', description: 'Order volume 45% above 24-hour average', timestamp: '2024-03-23 15:15:00', status: 'active', region: 'nigeria' },
+  { id: 'ALT004', type: 'policy', severity: 'low', title: 'Policy Reminder', description: 'Monthly compliance report due - Last filed 28 days ago', timestamp: '2024-03-23 14:00:00', status: 'active', region: 'global' },
+]
 
 export default function SecurityPage() {
   const [maintenanceMode, setMaintenanceMode] = useState(false)
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([
-    {
-      id: 'LOG001',
-      action: 'User Login',
-      actor: 'admin@vrom.io',
-      timestamp: '2024-03-23 15:45:22',
-      ipAddress: '192.168.1.100',
-      result: 'success',
-      details: 'Successful admin login with 2FA verification',
-    },
-    {
-      id: 'LOG002',
-      action: 'Driver Verification',
-      actor: 'system',
-      timestamp: '2024-03-23 15:40:10',
-      ipAddress: 'N/A',
-      result: 'success',
-      details: 'Driver license verified - DRV001',
-    },
-    {
-      id: 'LOG003',
-      action: 'Payout Initiated',
-      actor: 'admin@vrom.io',
-      timestamp: '2024-03-23 15:35:45',
-      ipAddress: '192.168.1.100',
-      result: 'success',
-      details: 'Payout of $50,000 to merchant account initiated',
-    },
-    {
-      id: 'LOG004',
-      action: 'Failed Login Attempt',
-      actor: 'unknown@email.com',
-      timestamp: '2024-03-23 15:20:30',
-      ipAddress: '203.45.67.89',
-      result: 'failed',
-      details: 'Invalid credentials provided',
-    },
-    {
-      id: 'LOG005',
-      action: 'Data Export',
-      actor: 'admin@vrom.io',
-      timestamp: '2024-03-23 15:10:15',
-      ipAddress: '192.168.1.100',
-      result: 'warning',
-      details: 'Exported user analytics report (50MB)',
-    },
+  const [alerts, setAlerts] = useState<Alert[]>(INITIAL_ALERTS)
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+
+  const [auditLogs] = useState<AuditLog[]>([
+    { id: 'LOG001', action: 'User Login', actor: 'admin@vrom.io', timestamp: '2024-03-23 15:45:22', ipAddress: '192.168.1.100', result: 'success', details: 'Successful admin login with 2FA verification' },
+    { id: 'LOG002', action: 'Driver Verification', actor: 'system', timestamp: '2024-03-23 15:40:10', ipAddress: '192.168.1.100', result: 'success', details: 'Driver license verified - DRV001' },
+    { id: 'LOG003', action: 'Payout Initiated', actor: 'admin@vrom.io', timestamp: '2024-03-23 15:35:45', ipAddress: '192.168.1.100', result: 'success', details: 'Payout of $50,000 to merchant account' },
+    { id: 'LOG004', action: 'Failed Login Attempt', actor: 'unknown@email.com', timestamp: '2024-03-23 15:20:30', ipAddress: '203.45.67.89', result: 'failed', details: 'Invalid credentials provided' },
   ])
 
-  const [alerts, setAlerts] = useState<Alert[]>([
-    {
-      id: 'ALT001',
-      type: 'fraud',
-      severity: 'critical',
-      title: 'Potential Fraud Detected',
-      description: 'Multiple failed transactions from same account within 10 minutes',
-      timestamp: '2024-03-23 15:42:00',
-    },
-    {
-      id: 'ALT002',
-      type: 'security',
-      severity: 'high',
-      title: 'Unusual Access Pattern',
-      description: 'Admin account accessed from new location (unknown IP)',
-      timestamp: '2024-03-23 15:35:00',
-    },
-    {
-      id: 'ALT003',
-      type: 'anomaly',
-      severity: 'medium',
-      title: 'High Volume Anomaly',
-      description: 'Order volume 45% above 24-hour average',
-      timestamp: '2024-03-23 15:15:00',
-    },
-    {
-      id: 'ALT004',
-      type: 'policy',
-      severity: 'low',
-      title: 'Policy Reminder',
-      description: 'Monthly compliance report due - Last filed 28 days ago',
-      timestamp: '2024-03-23 14:00:00',
-    },
-  ])
+  const activeAlerts = alerts.filter(a => a.status === 'active')
+
+  const handleResolveAlert = (id: string, newStatus: 'resolved' | 'dismissed') => {
+    setAlerts(alerts.map(a => a.id === id ? { ...a, status: newStatus } : a))
+    setSelectedAlert(null)
+  }
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case 'critical':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-      case 'high':
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-      case 'low':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-      default:
-        return 'bg-gray-100 text-gray-800'
+      case 'critical': return 'bg-red-500/20 text-red-500 border-red-500/30'
+      case 'high': return 'bg-orange-500/20 text-orange-500 border-orange-500/30'
+      case 'medium': return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30'
+      case 'low': return 'bg-blue-500/20 text-blue-500 border-blue-500/30'
+      default: return 'bg-gray-500/20 text-gray-500'
     }
   }
 
   const getResultColor = (result: string) => {
-    switch (result) {
-      case 'success':
-        return 'text-green-500'
-      case 'failed':
-        return 'text-red-500'
-      case 'warning':
-        return 'text-yellow-500'
-      default:
-        return 'text-gray-500'
-    }
-  }
-
-  const getSeverityIcon = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-      case 'high':
-        return <AlertTriangle className="h-5 w-5" />
-      default:
-        return <Shield className="h-5 w-5" />
-    }
+    return result === 'success' ? 'text-green-500' : result === 'failed' ? 'text-red-500' : 'text-yellow-500'
   }
 
   return (
@@ -152,13 +71,11 @@ export default function SecurityPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Security & Compliance</h1>
-        <p className="text-muted-foreground mt-1">
-          Fraud detection, audit logs, and role-based access control.
-        </p>
+        <p className="text-muted-foreground mt-1">Fraud detection, audit logs, and system alerts.</p>
       </div>
 
       {/* Kill Switch */}
-      <Card className={`p-6 glass-dark border-2 ${maintenanceMode ? 'border-destructive/50' : 'border-border'}`}>
+      <Card className={`p-6 glass-dark border-2 transition-colors ${maintenanceMode ? 'border-destructive bg-destructive/5' : 'border-border'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className={`p-3 rounded-lg ${maintenanceMode ? 'bg-destructive/20' : 'bg-primary/10'}`}>
@@ -167,17 +84,12 @@ export default function SecurityPage() {
             <div>
               <h3 className="font-bold text-lg text-foreground">System Maintenance Mode</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {maintenanceMode
-                  ? 'System is currently in maintenance mode. All services are paused.'
-                  : 'Enable to pause all platform operations for maintenance or emergencies.'}
+                {maintenanceMode ? 'System is currently halted. All customer transactions are paused.' : 'Enable to instantly pause all platform operations globally.'}
               </p>
             </div>
           </div>
-          <Button
-            onClick={() => setMaintenanceMode(!maintenanceMode)}
-            className={maintenanceMode ? 'bg-destructive hover:bg-destructive/90' : 'bg-primary'}
-          >
-            {maintenanceMode ? 'DISABLE' : 'ENABLE'}
+          <Button onClick={() => setMaintenanceMode(!maintenanceMode)} className={maintenanceMode ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-primary'}>
+            {maintenanceMode ? 'DISABLE KILL SWITCH' : 'ENABLE KILL SWITCH'}
           </Button>
         </div>
       </Card>
@@ -185,193 +97,156 @@ export default function SecurityPage() {
       {/* Security Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'Active Alerts', value: alerts.length, icon: AlertTriangle, color: 'text-red-500' },
-          { label: 'Failed Logins (24h)', value: 3, icon: LogIn, color: 'text-orange-500' },
-          { label: 'Flagged Transactions', value: 7, icon: Lock, color: 'text-yellow-500' },
-          { label: 'Security Score', value: '92%', icon: Shield, color: 'text-green-500' },
+          { label: 'Active Alerts', value: activeAlerts.length, icon: ShieldAlert, color: 'text-red-500' },
+          { label: 'Failed Logins (24h)', value: 12, icon: LogIn, color: 'text-orange-500' },
+          { label: 'Blocked IPS', value: 45, icon: Lock, color: 'text-yellow-500' },
+          { label: 'System Health', value: '98%', icon: Shield, color: 'text-green-500' },
         ].map((stat, i) => {
           const Icon = stat.icon
           return (
-            <Card key={i} className="p-4 glass-dark">
-              <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg bg-current/10 ${stat.color}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className={`text-2xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
-                </div>
+            <Card key={i} className="p-4 glass-dark flex items-center gap-4">
+              <div className={`p-3 rounded-lg bg-muted ${stat.color}`}><Icon className="h-6 w-6" /></div>
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase">{stat.label}</p>
+                <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
               </div>
             </Card>
           )
         })}
       </div>
 
-      {/* Active Alerts */}
+      {/* Active Alerts List */}
       <Card className="glass-dark">
-        <div className="p-6 border-b border-border">
+        <div className="p-5 border-b border-border flex justify-between items-center bg-muted/30">
           <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-            Active Security Alerts
+            <AlertTriangle className="h-5 w-5 text-destructive" /> Active Security Alerts
           </h3>
+          <span className="text-xs font-bold px-2.5 py-1 bg-destructive/20 text-destructive rounded-full">{activeAlerts.length} Pending</span>
         </div>
-
         <div className="divide-y divide-border">
-          {alerts.length > 0 ? (
-            alerts.map((alert) => (
-              <div
-                key={alert.id}
-                className="p-6 hover:bg-muted/30 transition-colors flex items-start gap-4"
-              >
-                <div className={`p-2 rounded-lg text-xl ${getSeverityColor(alert.severity)}`}>
-                  {getSeverityIcon(alert.severity)}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <h4 className="font-semibold text-foreground">{alert.title}</h4>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getSeverityColor(alert.severity)}`}>
-                      {alert.severity.toUpperCase()}
-                    </span>
+          {activeAlerts.length > 0 ? (
+            activeAlerts.map(alert => (
+              <div key={alert.id} onClick={() => setSelectedAlert(alert)} className="p-5 hover:bg-muted/50 transition-colors cursor-pointer flex items-center justify-between group">
+                <div className="flex items-start gap-4">
+                  <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${getSeverityColor(alert.severity)}`}>
+                    {alert.severity}
                   </div>
-                  <p className="text-sm text-muted-foreground mb-2">{alert.description}</p>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {alert.timestamp}
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-muted">
-                      {alert.type}
-                    </span>
+                  <div>
+                    <h4 className="font-bold text-foreground group-hover:text-primary transition-colors">{alert.title}</h4>
+                    <p className="text-sm text-muted-foreground mt-0.5">{alert.description}</p>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground font-medium">
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {alert.timestamp}</span>
+                      <span className="uppercase tracking-wider">Type: {alert.type}</span>
+                      {alert.region && <span className="uppercase tracking-wider text-primary">Region: {alert.region}</span>}
+                    </div>
                   </div>
                 </div>
-
-                <Button variant="outline" size="sm">
-                  Review
-                </Button>
+                <Button variant="outline" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">Review Incident</Button>
               </div>
             ))
           ) : (
-            <div className="p-6 text-center text-muted-foreground">
-              No active alerts
+            <div className="p-10 text-center text-muted-foreground flex flex-col items-center gap-3">
+              <CheckCircle className="h-10 w-10 text-green-500/50" />
+              <p>No active security alerts. System is fully secure.</p>
             </div>
           )}
         </div>
       </Card>
 
-      {/* Audit Log */}
+      {/* Alert Details Drawer */}
+      {selectedAlert && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedAlert(null)} />
+          <div className="relative w-full max-w-lg bg-background border-l border-border h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right-full">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-destructive" /> Incident Report
+                </h2>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedAlert(null)}><X className="h-5 w-5" /></Button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                  <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase mb-3 ${getSeverityColor(selectedAlert.severity)}`}>
+                    {selectedAlert.severity} PRIORITY
+                  </div>
+                  <h3 className="text-2xl font-bold text-foreground mb-2">{selectedAlert.title}</h3>
+                  <p className="text-muted-foreground">{selectedAlert.description}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="p-4 glass-dark">
+                    <p className="text-xs text-muted-foreground uppercase font-semibold">Incident ID</p>
+                    <p className="font-mono mt-1 text-sm">{selectedAlert.id}</p>
+                  </Card>
+                  <Card className="p-4 glass-dark">
+                    <p className="text-xs text-muted-foreground uppercase font-semibold">Time Detected</p>
+                    <p className="text-sm mt-1">{selectedAlert.timestamp}</p>
+                  </Card>
+                  <Card className="p-4 glass-dark">
+                    <p className="text-xs text-muted-foreground uppercase font-semibold">Classification</p>
+                    <p className="text-sm mt-1 uppercase">{selectedAlert.type}</p>
+                  </Card>
+                  <Card className="p-4 glass-dark">
+                    <p className="text-xs text-muted-foreground uppercase font-semibold">Affected Region</p>
+                    <p className="text-sm mt-1 uppercase text-primary font-bold">{selectedAlert.region || 'GLOBAL'}</p>
+                  </Card>
+                </div>
+
+                <div className="space-y-3 pt-6 border-t border-border">
+                  <h4 className="font-semibold">Recommended Actions</h4>
+                  <Button onClick={() => handleResolveAlert(selectedAlert.id, 'resolved')} className="w-full bg-green-600 hover:bg-green-700 text-white gap-2">
+                    <CheckCircle className="h-4 w-4" /> Mark as Resolved & Secure
+                  </Button>
+                  <Button onClick={() => handleResolveAlert(selectedAlert.id, 'dismissed')} variant="outline" className="w-full">
+                    Dismiss as False Alarm
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Audit Logs */}
       <Card className="glass-dark">
-        <div className="p-6 border-b border-border">
+        <div className="p-5 border-b border-border bg-muted/30">
           <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
-            <Eye className="h-5 w-5" />
-            Audit Log (Real-time)
+            <Eye className="h-5 w-5" /> Audit Log (Live)
           </h3>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-b border-border bg-muted/50">
+            <thead className="bg-muted/50 border-b border-border">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-foreground">
-                  Timestamp
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-foreground">
-                  Action
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-foreground">
-                  Actor
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-foreground">
-                  IP Address
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-foreground">
-                  Result
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-foreground">
-                  Details
-                </th>
+                <th className="px-5 py-3 text-left font-semibold">Time</th>
+                <th className="px-5 py-3 text-left font-semibold">Action Event</th>
+                <th className="px-5 py-3 text-left font-semibold">Actor / IP</th>
+                <th className="px-5 py-3 text-left font-semibold">Result</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {auditLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {log.timestamp}
-                    </span>
+                <tr key={log.id} className="hover:bg-muted/20">
+                  <td className="px-5 py-3 text-xs text-muted-foreground font-mono">{log.timestamp.split(' ')[1]}</td>
+                  <td className="px-5 py-3">
+                    <p className="font-semibold text-foreground">{log.action}</p>
+                    <p className="text-xs text-muted-foreground max-w-xs truncate">{log.details}</p>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="font-medium text-foreground">{log.action}</span>
+                  <td className="px-5 py-3">
+                    <p className="text-foreground">{log.actor}</p>
+                    <p className="text-xs font-mono text-muted-foreground">{log.ipAddress}</p>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-foreground">{log.actor}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs font-mono text-muted-foreground">
-                      {log.ipAddress}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="inline-flex items-center gap-1">
-                      <div className={`h-2 w-2 rounded-full ${getResultColor(log.result)}`} />
-                      <span className={`text-xs font-medium ${getResultColor(log.result)}`}>
-                        {log.result.toUpperCase()}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-muted-foreground truncate">
-                      {log.details}
+                  <td className="px-5 py-3">
+                    <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold bg-muted ${getResultColor(log.result)}`}>
+                      {log.result}
                     </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-
-        <div className="px-6 py-4 border-t border-border flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {auditLogs.length} of {auditLogs.length} logs
-          </p>
-          <Button variant="outline" size="sm">
-            Load More
-          </Button>
-        </div>
-      </Card>
-
-      {/* RBA (Role-Based Access) Info */}
-      <Card className="p-6 glass-dark">
-        <h3 className="font-semibold text-foreground mb-4">Role-Based Access Control</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            {
-              role: 'Super Admin',
-              permissions: '32 permissions',
-              users: 2,
-              color: 'text-red-500',
-            },
-            {
-              role: 'Admin',
-              permissions: '24 permissions',
-              users: 5,
-              color: 'text-orange-500',
-            },
-            {
-              role: 'Analyst',
-              permissions: '12 permissions',
-              users: 12,
-              color: 'text-blue-500',
-            },
-          ].map((rba, i) => (
-            <Card key={i} className="p-4 border border-border">
-              <p className={`font-semibold text-lg ${rba.color}`}>{rba.role}</p>
-              <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                <p>✓ {rba.permissions}</p>
-                <p>👥 {rba.users} users assigned</p>
-              </div>
-            </Card>
-          ))}
         </div>
       </Card>
     </div>

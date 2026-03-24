@@ -91,8 +91,8 @@ export default function SettingsPage() {
     handleSave()
   }
 
-  const filteredUsers = role === 'super_admin' 
-    ? users 
+  const filteredUsers = role === 'super_admin'
+    ? users
     : users.filter(u => u.region === user?.region || u.role === 'super_admin')
 
   const tabs: { label: string; value: TabType; icon: any }[] = [
@@ -111,7 +111,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1">
           {role === 'super_admin'
             ? 'Configure your OCC platform and manage regional admins.'
-            : `Manage settings for ${REGIONS[user?.region as any]?.name}`}
+            : `Manage settings for ${REGIONS[user?.region as RegionCode]?.name}`}
         </p>
       </div>
 
@@ -124,11 +124,10 @@ export default function SettingsPage() {
               <button
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  activeTab === tab.value
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.value
                     ? 'border-primary text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 {tab.label}
@@ -148,7 +147,7 @@ export default function SettingsPage() {
               <Card className="p-6 glass-dark border-primary/30 bg-primary/5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold text-foreground">Add New Admin</h2>
-                  <Button 
+                  <Button
                     variant={showAddUser ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setShowAddUser(!showAddUser)}
@@ -193,7 +192,7 @@ export default function SettingsPage() {
                         <option value="tanzania">Dar es Salaam, Tanzania</option>
                       </select>
                     )}
-                    <Button 
+                    <Button
                       onClick={handleAddUser}
                       className="bg-primary hover:bg-primary/90"
                       size="sm"
@@ -249,11 +248,10 @@ export default function SettingsPage() {
                           </td>
                         )}
                         <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            u.status === 'active'
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${u.status === 'active'
                               ? 'bg-green-500/20 text-green-600 dark:text-green-400'
                               : 'bg-red-500/20 text-red-600 dark:text-red-400'
-                          }`}>
+                            }`}>
                             {u.status}
                           </span>
                         </td>

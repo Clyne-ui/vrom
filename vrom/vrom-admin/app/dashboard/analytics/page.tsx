@@ -3,326 +3,459 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import {
-  TrendingUp, TrendingDown, Users, Zap, BarChart3, Download,
-  Globe, MapPin, ShoppingBag, Car, DollarSign
-} from 'lucide-react'
+import { TrendingUp, Users, Zap, BarChart3, Download, Globe } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
 import { REGIONS, REGION_LIST } from '@/lib/regions'
 import { RegionCode } from '@/lib/types'
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart'
 
-const REGION_TAB_FLAGS: Record<RegionCode, string> = {
-  global: '🌍',
-  kenya: '🇰🇪',
-  nigeria: '🇳🇬',
-  uganda: '🇺🇬',
-  tanzania: '🇹🇿',
+// Colors for charts
+const COLORS = ['#FF8C42', '#1A2A4A', '#3B82F6', '#10B981', '#F59E0B', '#EC4899']
+
+// Generate daily order data
+const getDailyOrderData = (regionCode: string) => {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  return days.map((day) => ({
+    day,
+    orders: Math.floor(Math.random() * 300 + 200),
+    revenue: Math.floor(Math.random() * 50000 + 30000),
+  }))
 }
 
-const REGION_TAB_COLORS: Record<string, string> = {
-  global: 'border-primary text-primary',
-  kenya: 'border-blue-500 text-blue-500',
-  nigeria: 'border-purple-500 text-purple-500',
-  uganda: 'border-green-500 text-green-500',
-  tanzania: 'border-orange-500 text-orange-500',
+// Generate hourly data
+const getHourlyData = () => {
+  return Array.from({ length: 24 }, (_, i) => ({
+    hour: `${i}:00`,
+    active: Math.floor(Math.random() * 500 + 300),
+  }))
 }
 
-function getRegionalStats(regionCode: string) {
-  if (regionCode === 'global') {
-    const orders = REGION_LIST.reduce((s, r) => s + Math.round(r.activeOrders * 3.5), 0)
-    const users = REGION_LIST.reduce((s, r) => s + r.riders + r.drivers, 0)
-    const merchants = REGION_LIST.reduce((s, r) => s + r.merchants, 0)
-    const gmv = REGION_LIST.reduce((s, r) => s + r.gmv, 0)
-    return {
-      orders, users, merchants, gmv,
-      avgOrderValue: Math.round((gmv / orders) * 100) / 100,
-      conversionRate: '4.8',
-      drivers: REGION_LIST.reduce((s, r) => s + r.drivers, 0),
-      riders: REGION_LIST.reduce((s, r) => s + r.riders, 0),
-    }
-  }
-  const r = REGIONS[regionCode as RegionCode]
-  if (!r) return null
-  const orders = Math.round(r.activeOrders * 3.5)
-  return {
-    orders,
-    users: r.riders + r.drivers,
-    merchants: r.merchants,
-    gmv: r.gmv,
-    avgOrderValue: Math.round((r.gmv / orders) * 100) / 100,
-    conversionRate: (Math.random() * 5 + 2).toFixed(1),
-    drivers: r.drivers,
-    riders: r.riders,
-  }
+// Regional performance data
+const getRegionalPerformance = () => {
+  return REGION_LIST.map((region) => ({
+    name: region.code.toUpperCase(),
+    gmv: region.gmv / 1000000, // In millions
+    orders: region.activeOrders * 3,
+    users: region.drivers + region.riders,
+  }))
 }
 
-function KPICard({
-  title, value, trend, icon: Icon, iconColor, unit
-}: {
-  title: string, value: string | number, trend?: number, icon: any, iconColor: string, unit?: string
-}) {
-  return (
-    <Card className="p-5 glass-dark hover:border-primary/30 transition-all">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{title}</p>
-          <p className="text-2xl font-bold text-foreground mt-2">
-            {value}{unit && <span className="text-sm font-normal text-muted-foreground ml-1">{unit}</span>}
-          </p>
-          {trend !== undefined && (
-            <div className="flex items-center gap-1 mt-2">
-              {trend >= 0
-                ? <TrendingUp className="h-3.5 w-3.5 text-green-500" />
-                : <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-              }
-              <span className={`text-xs font-semibold ${trend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {trend >= 0 ? '+' : ''}{trend}%
-              </span>
-              <span className="text-xs text-muted-foreground">vs last period</span>
-            </div>
-          )}
-        </div>
-        <div className={`p-2.5 rounded-lg ${iconColor} bg-opacity-10`}>
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-    </Card>
-  )
+// Order status distribution
+const getOrderStatus = () => {
+  return [
+    { name: 'Completed', value: 65, color: '#10B981' },
+    { name: 'Pending', value: 20, color: '#F59E0B' },
+    { name: 'In Progress', value: 10, color: '#3B82F6' },
+    { name: 'Cancelled', value: 5, color: '#EF4444' },
+  ]
 }
 
-function RegionStatsPanel({ regionCode }: { regionCode: string }) {
-  const stats = getRegionalStats(regionCode)
-  const regionInfo = REGIONS[regionCode as RegionCode]
-  if (!stats) return <p className="text-muted-foreground">No data for this region.</p>
-
-  const isGlobal = regionCode === 'global'
-  const gmvDisplay = isGlobal
-    ? `$${(stats.gmv / 1000000).toFixed(2)}M`
-    : `$${stats.gmv.toLocaleString()}`
-
-  return (
-    <div className="space-y-6">
-      {/* Region info banner */}
-      {!isGlobal && regionInfo && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
-          <MapPin className="h-5 w-5 text-primary" />
-          <div>
-            <p className="font-semibold text-foreground">{regionInfo.name}, {regionInfo.country}</p>
-            <p className="text-xs text-muted-foreground">Currency: {regionInfo.currency} · Timezone: {regionInfo.timezone}</p>
-          </div>
-          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-500 font-semibold">
-            {regionInfo.status === 'active' ? '● Active' : '○ Inactive'}
-          </span>
-        </div>
-      )}
-
-      {/* KPI Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <KPICard title="Gross Merchandise Value" value={gmvDisplay} trend={8.2} icon={DollarSign} iconColor="text-primary" />
-        <KPICard title="Total Orders" value={stats.orders.toLocaleString()} trend={5.4} icon={ShoppingBag} iconColor="text-blue-500" />
-        <KPICard title="Active Users" value={stats.users.toLocaleString()} trend={3.1} icon={Users} iconColor="text-green-500" />
-        <KPICard title="Merchants" value={stats.merchants.toLocaleString()} trend={12.7} icon={BarChart3} iconColor="text-orange-500" />
-        <KPICard title="Active Drivers" value={stats.drivers.toLocaleString()} trend={1.9} icon={Car} iconColor="text-violet-500" />
-        <KPICard title="Active Riders" value={stats.riders.toLocaleString()} trend={4.2} icon={Zap} iconColor="text-cyan-500" />
-        <KPICard title="Avg Order Value" value={`$${stats.avgOrderValue}`} trend={-2.1} icon={TrendingUp} iconColor="text-pink-500" />
-        <KPICard title="Conversion Rate" value={`${stats.conversionRate}%`} trend={0.8} icon={BarChart3} iconColor="text-yellow-500" />
-      </div>
-
-      {/* Revenue bar chart mock */}
-      <Card className="p-6 glass-dark">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-foreground">Order Volume (Last 30 Days)</h3>
-          <span className="text-xs text-muted-foreground">Updated live</span>
-        </div>
-        <div className="h-36 flex items-end gap-1">
-          {Array.from({ length: 30 }).map((_, i) => {
-            const height = 20 + Math.abs(Math.sin(i * 0.7) * 70) + Math.random() * 20
-            return (
-              <div
-                key={i}
-                className="flex-1 rounded-t bg-primary/30 hover:bg-primary/60 transition-colors cursor-pointer"
-                style={{ height: `${height}%`, minHeight: '4px' }}
-                title={`Day ${i + 1}`}
-              />
-            )
-          })}
-        </div>
-        <p className="text-xs text-muted-foreground mt-3">Day 1 → Day 30</p>
-      </Card>
-
-      {/* Revenue breakdown */}
-      <Card className="p-6 glass-dark">
-        <h3 className="font-semibold text-foreground mb-4">Revenue Breakdown</h3>
-        <div className="space-y-3">
-          {[
-            { label: 'Delivery Fees', pct: 42, color: 'bg-primary' },
-            { label: 'Service Commission', pct: 28, color: 'bg-blue-500' },
-            { label: 'Premium Services', pct: 18, color: 'bg-green-500' },
-            { label: 'Tax & Compliance', pct: 12, color: 'bg-orange-400' },
-          ].map(item => (
-            <div key={item.label}>
-              <div className="flex justify-between mb-1.5">
-                <span className="text-sm text-foreground">{item.label}</span>
-                <span className="text-sm font-semibold text-foreground">{item.pct}%</span>
-              </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div className={`h-full ${item.color} rounded-full`} style={{ width: `${item.pct}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  )
+interface KPIWidget {
+  id: string
+  title: string
+  value: string | number
+  trend: number
+  icon: any
+  color: string
+  region?: string
 }
 
 export default function AnalyticsPage() {
-  const { role, region } = useUser()
+  const { user, role, region } = useUser()
+  const [dateRange, setDateRange] = useState('week')
+  const [selectedChart, setSelectedChart] = useState('overview')
 
-  // Super admin can switch between All Regions tab + each region
-  // Regional admin is locked to their assigned region
-  const availableTabs: RegionCode[] = role === 'super_admin'
-    ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania']
-    : [region as RegionCode]
+  // Get regional data
+  const getRegionalData = (regionCode: string) => {
+    const regionInfo = REGIONS[regionCode as RegionCode]
+    if (!regionInfo) return null
 
-  const [activeTab, setActiveTab] = useState<RegionCode>(
-    role === 'super_admin' ? 'global' : (region as RegionCode)
-  )
-  const [dateRange, setDateRange] = useState('month')
+    return {
+      orders: Math.round(regionInfo.activeOrders * 3.5),
+      users: regionInfo.riders + regionInfo.drivers,
+      avgOrderValue: Math.round(regionInfo.gmv / Math.round(regionInfo.activeOrders * 3.5) * 100) / 100,
+      conversionRate: (Math.random() * 5 + 2).toFixed(1),
+      gmv: regionInfo.gmv,
+    }
+  }
+
+  // Build KPI widgets based on role
+  const getWidgets = (): KPIWidget[] => {
+    if (role === 'super_admin' && region === 'global') {
+      const globalStats = {
+        orders: REGION_LIST.reduce((sum, r) => sum + Math.round(r.activeOrders * 3.5), 0),
+        users: REGION_LIST.reduce((sum, r) => sum + r.riders + r.drivers, 0),
+        gmv: REGION_LIST.reduce((sum, r) => sum + r.gmv, 0),
+      }
+
+      return [
+        {
+          id: 'w1',
+          title: 'Global Orders',
+          value: globalStats.orders.toLocaleString(),
+          trend: 8.5,
+          icon: Zap,
+          color: 'text-blue-500',
+        },
+        {
+          id: 'w2',
+          title: 'Global Users',
+          value: globalStats.users.toLocaleString(),
+          trend: 5.2,
+          icon: Users,
+          color: 'text-green-500',
+        },
+        {
+          id: 'w3',
+          title: 'Global GMV',
+          value: `$${(globalStats.gmv / 1000000).toFixed(1)}M`,
+          trend: 12.3,
+          icon: TrendingUp,
+          color: 'text-purple-500',
+        },
+        {
+          id: 'w4',
+          title: 'Avg Order Value',
+          value: `$${(globalStats.gmv / globalStats.orders).toFixed(2)}`,
+          trend: -2.1,
+          icon: BarChart3,
+          color: 'text-orange-500',
+        },
+      ]
+    } else if (role === 'super_admin') {
+      const regionData = getRegionalData(region)
+      if (!regionData) return []
+
+      return [
+        {
+          id: 'w1',
+          title: `Orders - ${REGIONS[region as RegionCode]?.name}`,
+          value: regionData.orders.toLocaleString(),
+          trend: 8.5,
+          icon: Zap,
+          color: 'text-blue-500',
+          region,
+        },
+        {
+          id: 'w2',
+          title: `Active Users - ${REGIONS[region as RegionCode]?.name}`,
+          value: regionData.users.toLocaleString(),
+          trend: 5.2,
+          icon: Users,
+          color: 'text-green-500',
+          region,
+        },
+        {
+          id: 'w3',
+          title: `GMV - ${REGIONS[region as RegionCode]?.name}`,
+          value: `$${(regionData.gmv / 1000).toFixed(0)}K`,
+          trend: 12.3,
+          icon: TrendingUp,
+          color: 'text-purple-500',
+          region,
+        },
+        {
+          id: 'w4',
+          title: `Avg Order Value - ${REGIONS[region as RegionCode]?.name}`,
+          value: `$${regionData.avgOrderValue}`,
+          trend: -2.1,
+          icon: BarChart3,
+          color: 'text-orange-500',
+          region,
+        },
+      ]
+    } else {
+      const regionData = getRegionalData(region)
+      if (!regionData) return []
+
+      return [
+        {
+          id: 'w1',
+          title: 'Total Orders',
+          value: regionData.orders.toLocaleString(),
+          trend: 8.5,
+          icon: Zap,
+          color: 'text-blue-500',
+        },
+        {
+          id: 'w2',
+          title: 'Active Users',
+          value: regionData.users.toLocaleString(),
+          trend: 5.2,
+          icon: Users,
+          color: 'text-green-500',
+        },
+        {
+          id: 'w3',
+          title: 'Regional GMV',
+          value: `$${(regionData.gmv / 1000).toFixed(0)}K`,
+          trend: 12.3,
+          icon: TrendingUp,
+          color: 'text-purple-500',
+        },
+        {
+          id: 'w4',
+          title: 'Conversion Rate',
+          value: `${regionData.conversionRate}%`,
+          trend: -2.1,
+          icon: BarChart3,
+          color: 'text-orange-500',
+        },
+      ]
+    }
+  }
+
+  const widgets = getWidgets()
+  const dailyData = getDailyOrderData(region)
+  const hourlyData = getHourlyData()
+  const regionalPerf = getRegionalPerformance()
+  const orderStatus = getOrderStatus()
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Analytics</h1>
           <p className="text-muted-foreground mt-1">
-            {role === 'super_admin'
-              ? 'Global performance overview with per-region breakdown.'
-              : `Regional analytics — ${REGIONS[region as RegionCode]?.name}`}
+            {role === 'super_admin' && region === 'global'
+              ? 'Global platform performance metrics'
+              : `${REGIONS[region as RegionCode]?.name} regional analytics`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            {(['today', 'week', 'month', 'quarter', 'year'] as const).map(range => (
-              <button
-                key={range}
-                onClick={() => setDateRange(range)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
-                  dateRange === range
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                {range}
-              </button>
-            ))}
-          </div>
+        <div className="flex gap-2">
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className="px-4 py-2 bg-card border border-border rounded-lg text-sm text-foreground"
+          >
+            <option value="week">Last 7 Days</option>
+            <option value="month">Last 30 Days</option>
+            <option value="quarter">Last 90 Days</option>
+            <option value="year">Last Year</option>
+          </select>
           <Button variant="outline" size="sm" className="gap-2">
-            <Download className="h-4 w-4" /> Export
+            <Download className="h-4 w-4" />
+            Export
           </Button>
         </div>
       </div>
 
-      {/* ─── SUPER ADMIN: Region Tab Switcher ─── */}
-      {role === 'super_admin' && (
-        <div className="flex gap-2 flex-wrap border-b border-border pb-0">
-          {availableTabs.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeTab === tab
-                  ? REGION_TAB_COLORS[tab] + ' border-b-2'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {widgets.map((widget) => {
+          const Icon = widget.icon
+          return (
+            <Card key={widget.id} className="p-6 glass-dark">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2 flex-1">
+                  <p className="text-sm text-muted-foreground">{widget.title}</p>
+                  <h3 className="text-2xl font-bold text-foreground">
+                    {widget.value}
+                  </h3>
+                  <div className="flex items-center gap-1 text-sm">
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <span className={widget.trend > 0 ? 'text-green-500' : 'text-red-500'}>
+                      {widget.trend > 0 ? '+' : ''}{widget.trend}% from last period
+                    </span>
+                  </div>
+                </div>
+                <Icon className={`h-8 w-8 ${widget.color}`} />
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Daily Orders & Revenue */}
+        <Card className="p-6 glass-dark">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              Daily Orders & Revenue ({dateRange === 'week' ? 'This Week' : 'This Month'})
+            </h3>
+            <ChartContainer
+              config={{
+                orders: {
+                  label: 'Orders',
+                  color: '#FF8C42',
+                },
+              }}
+              className="h-[300px]"
             >
-              <span>{REGION_TAB_FLAGS[tab]}</span>
-              {tab === 'global' ? 'All Regions' : REGIONS[tab]?.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Data panel */}
-      <RegionStatsPanel regionCode={activeTab} />
-
-      {/* ─── SUPER ADMIN ONLY: Cross-Region Comparison ─── */}
-      {role === 'super_admin' && activeTab === 'global' && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Globe className="h-5 w-5 text-primary" /> Region-by-Region Comparison
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {REGION_LIST.map(regionData => {
-              const stats = getRegionalStats(regionData.code)
-              if (!stats) return null
-              const tabColor = REGION_TAB_COLORS[regionData.code] || ''
-              return (
-                <Card
-                  key={regionData.code}
-                  className="p-5 glass-dark hover:border-primary/30 transition-all cursor-pointer"
-                  onClick={() => setActiveTab(regionData.code as RegionCode)}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{REGION_TAB_FLAGS[regionData.code as RegionCode]}</span>
-                      <h3 className="font-bold text-foreground text-sm">{regionData.name}</h3>
-                    </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 font-medium">Active</span>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">GMV</span>
-                      <span className="font-semibold text-foreground">${regionData.gmv.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Orders</span>
-                      <span className="font-semibold text-foreground">{stats.orders.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Users</span>
-                      <span className="font-semibold text-foreground">{stats.users.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Merchants</span>
-                      <span className="font-semibold text-foreground">{regionData.merchants.toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <button className={`mt-3 w-full text-xs font-medium py-1.5 rounded border ${tabColor} border-current opacity-70 hover:opacity-100 transition-opacity`}>
-                    View Details →
-                  </button>
-                </Card>
-              )
-            })}
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dailyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis dataKey="day" stroke="rgba(255,255,255,0.5)" />
+                  <YAxis stroke="rgba(255,255,255,0.5)" />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="orders"
+                    stroke="#FF8C42"
+                    name="Orders"
+                    dot={{ fill: '#FF8C42' }}
+                    strokeWidth={2}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
           </div>
+        </Card>
 
-          {/* Company-wide summary */}
-          <Card className="p-6 glass-dark border-primary/30 bg-primary/5">
-            <h2 className="text-base font-bold text-foreground mb-4 flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" /> Vrom Company-Wide Summary
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Regions</p>
-                <p className="text-2xl font-bold text-foreground">{REGION_LIST.length}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Platform Uptime</p>
-                <p className="text-2xl font-bold text-green-500">99.8%</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Regional Admins</p>
-                <p className="text-2xl font-bold text-foreground">{REGION_LIST.length}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">YoY Growth</p>
-                <p className="text-2xl font-bold text-primary">+24%</p>
-              </div>
+        {/* Hourly Active Users */}
+        <Card className="p-6 glass-dark">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-foreground">Active Users - Today</h3>
+            <ChartContainer
+              config={{
+                active: {
+                  label: 'Active Users',
+                  color: '#3B82F6',
+                },
+              }}
+              className="h-[300px]"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={hourlyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis dataKey="hour" stroke="rgba(255,255,255,0.5)" />
+                  <YAxis stroke="rgba(255,255,255,0.5)" />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="active" fill="#3B82F6" name="Active Users" />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </div>
+        </Card>
+
+        {/* Order Status Distribution */}
+        <Card className="p-6 glass-dark">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-foreground">Order Status Distribution</h3>
+            <ChartContainer
+              config={{
+                status: {
+                  label: 'Orders',
+                  color: '#FF8C42',
+                },
+              }}
+              className="h-[300px]"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={orderStatus}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, value }) => `${name}: ${value}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {orderStatus.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </div>
+        </Card>
+
+        {/* Regional Performance */}
+        {(role === 'super_admin' || region === 'global') && (
+          <Card className="p-6 glass-dark">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Globe className="h-5 w-5 text-primary" />
+                Regional Performance Comparison
+              </h3>
+              <ChartContainer
+                config={{
+                  gmv: {
+                    label: 'GMV ($M)',
+                    color: '#FF8C42',
+                  },
+                  orders: {
+                    label: 'Orders',
+                    color: '#3B82F6',
+                  },
+                }}
+                className="h-[300px]"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={regionalPerf} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" />
+                    <YAxis stroke="rgba(255,255,255,0.5)" />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Legend />
+                    <Bar dataKey="gmv" fill="#FF8C42" name="GMV ($M)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
             </div>
           </Card>
+        )}
+      </div>
+
+      {/* Revenue Trend */}
+      <Card className="p-6 glass-dark">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-foreground">Revenue Trend</h3>
+          <ChartContainer
+            config={{
+              revenue: {
+                label: 'Revenue',
+                color: '#10B981',
+              },
+            }}
+            className="h-[400px]"
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={dailyData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="day" stroke="rgba(255,255,255,0.5)" />
+                <YAxis stroke="rgba(255,255,255,0.5)" />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#10B981"
+                  name="Revenue ($)"
+                  dot={{ fill: '#10B981' }}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartContainer>
         </div>
-      )}
+      </Card>
     </div>
   )
 }

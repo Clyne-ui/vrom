@@ -2,250 +2,212 @@
 
 import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
-import { TrendingUp, Users, Zap, AlertCircle, Eye, MapPin, Wallet, Globe } from 'lucide-react'
+import { TrendingUp, TrendingDown, Users, Zap, AlertCircle, Eye, MapPin, Wallet, Globe, Car, Clock } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
 import { REGIONS } from '@/lib/regions'
+import { useRouter } from 'next/navigation'
+import { RegionCode } from '@/lib/types'
 
-interface KPIData {
-  gmv: number
-  commission: number
-  escrow: number
-  activeOrders: number
-  activeDrivers: number
-  avgDeliveryTime: number
+interface KPICard {
+  slug: string
+  title: string
+  getValue: (gmv: number) => string
+  sub: (gmv: number) => string
+  trend: number
+  icon: any
+  iconBg: string
+  iconColor: string
 }
+
+const KPI_CARDS: KPICard[] = [
+  {
+    slug: 'gmv',
+    title: 'Gross Merchandise Value',
+    getValue: (g) => `$${(g / 1000).toFixed(1)}K`,
+    sub: (g) => `${Math.round(g / 150)} orders this month`,
+    trend: 8.2,
+    icon: Wallet,
+    iconBg: 'bg-primary/10',
+    iconColor: 'text-primary',
+  },
+  {
+    slug: 'commission',
+    title: 'Platform Commission',
+    getValue: (g) => `$${(g * 0.12 / 1000).toFixed(1)}K`,
+    sub: () => '12% avg. commission rate',
+    trend: 5.1,
+    icon: Zap,
+    iconBg: 'bg-green-500/10',
+    iconColor: 'text-green-500',
+  },
+  {
+    slug: 'escrow',
+    title: 'Escrow In-Flight',
+    getValue: (g) => `$${(g * 0.05 / 1000).toFixed(1)}K`,
+    sub: () => '12 pending disbursements',
+    trend: 0.4,
+    icon: Eye,
+    iconBg: 'bg-yellow-500/10',
+    iconColor: 'text-yellow-500',
+  },
+  {
+    slug: 'orders',
+    title: 'Active Orders',
+    getValue: (g) => Math.round(g / 150).toLocaleString(),
+    sub: () => 'Real-time tracking enabled',
+    trend: 3.2,
+    icon: Zap,
+    iconBg: 'bg-blue-500/10',
+    iconColor: 'text-blue-500',
+  },
+  {
+    slug: 'drivers',
+    title: 'Active Drivers',
+    getValue: (g) => Math.round(g / 600).toLocaleString(),
+    sub: () => '+12 new drivers today',
+    trend: 2.8,
+    icon: Car,
+    iconBg: 'bg-orange-500/10',
+    iconColor: 'text-orange-500',
+  },
+  {
+    slug: 'delivery',
+    title: 'Avg. Delivery Time',
+    getValue: () => '24.3m',
+    sub: () => '-2.3% from target — great!',
+    trend: -2.3,
+    icon: Clock,
+    iconBg: 'bg-purple-500/10',
+    iconColor: 'text-purple-500',
+  },
+]
 
 export default function DashboardPage() {
   const { user, role, region } = useUser()
-  const regionInfo = REGIONS[region as any]
-  
-  const [kpiData, setKpiData] = useState<KPIData>({
-    gmv: region === 'global' ? 2450000 : regionInfo?.gmv || 284000,
-    commission: region === 'global' ? 342000 : Math.round((regionInfo?.gmv || 284000) * 0.12),
-    escrow: region === 'global' ? 125000 : Math.round((regionInfo?.gmv || 284000) * 0.05),
-    activeOrders: region === 'global' ? 1842 : (regionInfo?.activeOrders || 345) * 3,
-    activeDrivers: region === 'global' ? 523 : regionInfo?.drivers || 234,
-    avgDeliveryTime: 24,
-  })
+  const router = useRouter()
+  const regionInfo = REGIONS[region as RegionCode]
 
-  const [isLoading, setIsLoading] = useState(false)
+  const baseGMV = region === 'global' ? 2450000 : (regionInfo?.gmv || 284000)
+  const [gmv, setGmv] = useState(baseGMV)
 
-  // Simulate real-time data updates
+  // Subtle live updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      setKpiData(prev => ({
-        ...prev,
-        gmv: prev.gmv + Math.floor(Math.random() * 10000),
-        commission: prev.commission + Math.floor(Math.random() * 1000),
-        escrow: prev.escrow + Math.floor(Math.random() * 500),
-        activeOrders: prev.activeOrders + Math.floor(Math.random() * 5 - 2),
-        activeDrivers: prev.activeDrivers + Math.floor(Math.random() * 3 - 1),
-        avgDeliveryTime: Math.max(20, prev.avgDeliveryTime + Math.random() - 0.5),
-      }))
-    }, 3000)
-    return () => clearInterval(interval)
+    const id = setInterval(() => setGmv((g: number) => g + Math.floor(Math.random() * 8000 + 1000)), 4000)
+    return () => clearInterval(id)
   }, [])
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
-  }
+  const recentActivity = [
+    { type: 'order', msg: `New order placed in ${regionInfo?.name || 'Nairobi'} — #ORD${Math.floor(Math.random() * 90000 + 10000)}`, time: '2 min ago' },
+    { type: 'driver', msg: 'New driver onboarded — License verified ✓', time: '5 min ago' },
+    { type: 'payment', msg: `Payment processed — $${(Math.random() * 3000 + 500).toFixed(0)}`, time: '12 min ago' },
+    { type: 'alert', msg: `High demand detected in ${regionInfo?.name || 'Downtown'} zone`, time: '18 min ago' },
+    { type: 'order', msg: 'Order #ORD45673 — Delivered successfully', time: '24 min ago' },
+  ]
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
             {role === 'super_admin' && region === 'global'
-              ? 'Welcome back! Here\'s your global platform overview.'
-              : `Welcome to ${regionInfo?.name}! Here's your regional overview.`}
+              ? "Welcome back! Here's your global platform overview."
+              : `Welcome, ${user?.name?.split(' ')[0]}! Here's what's happening in ${regionInfo?.name}.`}
           </p>
         </div>
-        {role !== 'super_admin' && (
+        {role !== 'super_admin' && regionInfo && (
           <div className="px-4 py-2 rounded-lg bg-primary/10 border border-primary/30">
-            <p className="text-xs text-muted-foreground">Assigned Region</p>
-            <p className="text-lg font-bold text-foreground">{regionInfo?.name}</p>
-            <p className="text-xs text-primary">{regionInfo?.country}</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Assigned Region</p>
+            <p className="text-lg font-bold text-foreground">{regionInfo.name}</p>
+            <p className="text-xs text-primary">{regionInfo.country}</p>
           </div>
         )}
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Gross Merchandise Value */}
-        <Card className="p-6 glass-dark border-primary/20 hover:border-primary/40 transition-all">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
-                Gross Merchandise Value
-              </p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {formatCurrency(kpiData.gmv)}
-              </p>
-              <p className="text-xs text-green-500 mt-2 flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" />
-                +8.2% from yesterday
-              </p>
-            </div>
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <Wallet className="h-6 w-6 text-primary" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Platform Commission */}
-        <Card className="p-6 glass-dark border-primary/20 hover:border-primary/40 transition-all">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
-                Platform Commission
-              </p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {formatCurrency(kpiData.commission)}
-              </p>
-              <p className="text-xs text-green-500 mt-2 flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" />
-                +5.1% from yesterday
-              </p>
-            </div>
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <Zap className="h-6 w-6 text-primary" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Escrow In-Flight */}
-        <Card className="p-6 glass-dark border-primary/20 hover:border-primary/40 transition-all">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
-                Escrow In-Flight
-              </p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {formatCurrency(kpiData.escrow)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                12 pending disbursements
-              </p>
-            </div>
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <Eye className="h-6 w-6 text-primary" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Active Orders */}
-        <Card className="p-6 glass-dark">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
-                Active Orders
-              </p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {kpiData.activeOrders.toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Real-time tracking enabled
-              </p>
-            </div>
-            <div className="p-3 bg-blue-500/10 rounded-lg">
-              <Zap className="h-6 w-6 text-blue-500" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Active Drivers */}
-        <Card className="p-6 glass-dark">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
-                Active Drivers
-              </p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {kpiData.activeDrivers}
-              </p>
-              <p className="text-xs text-green-500 mt-2">
-                +12 new drivers today
-              </p>
-            </div>
-            <div className="p-3 bg-green-500/10 rounded-lg">
-              <Users className="h-6 w-6 text-green-500" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Average Delivery Time */}
-        <Card className="p-6 glass-dark">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">
-                Avg. Delivery Time
-              </p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {kpiData.avgDeliveryTime.toFixed(1)}m
-              </p>
-              <p className="text-xs text-green-500 mt-2">
-                -2.3% from target
-              </p>
-            </div>
-            <div className="p-3 bg-orange-500/10 rounded-lg">
-              <MapPin className="h-6 w-6 text-orange-500" />
-            </div>
-          </div>
-        </Card>
+      {/* ── KPI Cards — all clickable ── */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1">
+          <Zap className="h-3 w-3" /> Click any card to see detailed breakdown
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {KPI_CARDS.map(card => {
+            const Icon = card.icon
+            const isNeg = card.trend < 0
+            return (
+              <Card
+                key={card.slug}
+                onClick={() => router.push(`/dashboard/kpi/${card.slug}`)}
+                className="p-6 glass-dark border-border hover:border-primary/50 hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground font-medium group-hover:text-foreground transition-colors">
+                      {card.title}
+                    </p>
+                    <p className="text-3xl font-bold text-foreground mt-2">
+                      {card.getValue(gmv)}
+                    </p>
+                    <div className="flex items-center gap-1 mt-2">
+                      {isNeg
+                        ? <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                        : <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                      }
+                      <span className={`text-xs font-semibold ${isNeg ? 'text-red-500' : 'text-green-500'}`}>
+                        {isNeg ? '' : '+'}{card.trend}%
+                      </span>
+                      <span className="text-xs text-muted-foreground">vs last period</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">{card.sub(gmv)}</p>
+                  </div>
+                  <div className={`p-3 rounded-xl ${card.iconBg} group-hover:scale-110 transition-transform`}>
+                    <Icon className={`h-6 w-6 ${card.iconColor}`} />
+                  </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-border">
+                  <span className="text-xs text-primary font-medium group-hover:underline">View full details →</span>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
       </div>
 
-      {/* Charts Section */}
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Order Trends */}
+        {/* Order Volume Trend */}
         <Card className="p-6 glass-dark">
-          <h3 className="font-semibold text-foreground mb-4">Order Volume Trend</h3>
-          <div className="h-48 flex items-end justify-center gap-2">
+          <h3 className="font-semibold text-foreground mb-4">Order Volume (Last 24 Hours)</h3>
+          <div className="h-40 flex items-end gap-1">
             {Array.from({ length: 24 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex-1 bg-primary/20 hover:bg-primary/40 rounded-t transition-colors"
-                style={{
-                  height: `${Math.random() * 100}%`,
-                  minHeight: '8px',
-                }}
+              <div key={i} className="flex-1 bg-primary/25 hover:bg-primary/50 rounded-t transition-colors cursor-pointer"
+                style={{ height: `${20 + Math.abs(Math.sin(i * 0.8) * 75 + Math.random() * 15)}%`, minHeight: '8px' }}
+                title={`${i}:00`}
               />
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-4">Last 24 hours</p>
+          <div className="flex justify-between text-xs text-muted-foreground mt-2">
+            <span>00:00</span><span>12:00</span><span>23:59</span>
+          </div>
         </Card>
 
         {/* Revenue Breakdown */}
         <Card className="p-6 glass-dark">
           <h3 className="font-semibold text-foreground mb-4">Revenue Breakdown</h3>
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {[
-              { label: 'Delivery Fees', value: 45, color: 'bg-primary' },
-              { label: 'Service Tax', value: 30, color: 'bg-blue-500' },
-              { label: 'Premium Services', value: 15, color: 'bg-green-500' },
-              { label: 'Other', value: 10, color: 'bg-yellow-500' },
-            ].map((item) => (
+              { label: 'Delivery Fees', pct: 45, color: 'bg-primary' },
+              { label: 'Service Tax', pct: 30, color: 'bg-blue-500' },
+              { label: 'Premium Services', pct: 15, color: 'bg-green-500' },
+              { label: 'Other', pct: 10, color: 'bg-yellow-500' },
+            ].map(item => (
               <div key={item.label}>
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm text-foreground font-medium">
-                    {item.label}
-                  </span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {item.value}%
-                  </span>
+                <div className="flex justify-between mb-1.5">
+                  <span className="text-sm text-foreground">{item.label}</span>
+                  <span className="text-sm font-semibold text-foreground">{item.pct}%</span>
                 </div>
                 <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${item.color} transition-all`}
-                    style={{ width: `${item.value}%` }}
-                  />
+                  <div className={`h-full ${item.color} rounded-full transition-all`} style={{ width: `${item.pct}%` }} />
                 </div>
               </div>
             ))}
@@ -253,27 +215,41 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Region Overview — Super Admin only */}
+      {role === 'super_admin' && region === 'global' && (
+        <Card className="p-6 glass-dark">
+          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" /> Regions Overview
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {[
+              { label: 'Nairobi, Kenya', gmv: '284K', flag: '🇰🇪', status: 'active' },
+              { label: 'Lagos, Nigeria', gmv: '756K', flag: '🇳🇬', status: 'active' },
+              { label: 'Kampala, Uganda', gmv: '89K', flag: '🇺🇬', status: 'active' },
+              { label: 'Dar es Salaam', gmv: '156K', flag: '🇹🇿', status: 'active' },
+            ].map(r => (
+              <div key={r.label} className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                <span className="text-xl">{r.flag}</span>
+                <div>
+                  <p className="font-medium text-foreground text-xs">{r.label}</p>
+                  <p className="text-primary font-bold">${r.gmv}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Recent Activity */}
       <Card className="p-6 glass-dark">
         <h3 className="font-semibold text-foreground mb-4">Recent Activity</h3>
-        <div className="space-y-3">
-          {[
-            { type: 'order', msg: 'New order placed in Mumbai - Order #12345', time: '2 min ago' },
-            { type: 'driver', msg: 'New driver onboarded - License verified', time: '5 min ago' },
-            { type: 'payment', msg: 'Payment processed - Amount: $2,450', time: '12 min ago' },
-            { type: 'alert', msg: 'High demand detected in Bangalore region', time: '18 min ago' },
-          ].map((item, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-            >
-              <div className="h-2 w-2 rounded-full bg-primary" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-foreground truncate">{item.msg}</p>
-              </div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                {item.time}
-              </span>
+        <div className="space-y-2">
+          {recentActivity.map((item, i) => (
+            <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+              <div className={`h-2 w-2 rounded-full flex-shrink-0 ${item.type === 'alert' ? 'bg-yellow-400' : item.type === 'payment' ? 'bg-green-400' : 'bg-primary'
+                }`} />
+              <p className="text-sm text-foreground flex-1 truncate">{item.msg}</p>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">{item.time}</span>
             </div>
           ))}
         </div>
