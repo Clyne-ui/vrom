@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { TrendingUp, TrendingDown, Users, Zap, AlertCircle, Eye, MapPin, Wallet, Globe, Car, Clock } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
+import { useOCCWebSocket } from '@/lib/hooks/use-occ-websocket'
 import { REGIONS } from '@/lib/regions'
 import { useRouter } from 'next/navigation'
 import { RegionCode } from '@/lib/types'
@@ -11,8 +12,8 @@ import { RegionCode } from '@/lib/types'
 interface KPICard {
   slug: string
   title: string
-  getValue: (gmv: number) => string
-  sub: (gmv: number) => string
+  getValue: (data: any) => string
+  sub: (data: any) => string
   trend: number
   icon: any
   iconBg: string
@@ -23,8 +24,8 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'gmv',
     title: 'Gross Merchandise Value',
-    getValue: (g) => `$${(g / 1000).toFixed(1)}K`,
-    sub: (g) => `${Math.round(g / 150)} orders this month`,
+    getValue: (data) => `$${(data?.financials?.total_gmv || 0).toLocaleString()}`,
+    sub: (data) => `${data?.financials?.total_orders || 0} orders this month`,
     trend: 8.2,
     icon: Wallet,
     iconBg: 'bg-primary/10',
@@ -33,7 +34,7 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'commission',
     title: 'Platform Commission',
-    getValue: (g) => `$${(g * 0.12 / 1000).toFixed(1)}K`,
+    getValue: (data) => `$${(data?.financials?.total_commission || 0).toLocaleString()}`,
     sub: () => '12% avg. commission rate',
     trend: 5.1,
     icon: Zap,
@@ -43,8 +44,8 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'escrow',
     title: 'Escrow In-Flight',
-    getValue: (g) => `$${(g * 0.05 / 1000).toFixed(1)}K`,
-    sub: () => '12 pending disbursements',
+    getValue: (data) => `$${(data?.financials?.escrow_in_flight || 0).toLocaleString()}`,
+    sub: () => 'Pending disbursements',
     trend: 0.4,
     icon: Eye,
     iconBg: 'bg-yellow-500/10',
@@ -53,7 +54,7 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'orders',
     title: 'Active Orders',
-    getValue: (g) => Math.round(g / 150).toLocaleString(),
+    getValue: (data) => (data?.financials?.total_orders || 0).toLocaleString(),
     sub: () => 'Real-time tracking enabled',
     trend: 3.2,
     icon: Zap,
@@ -63,7 +64,7 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'drivers',
     title: 'Active Drivers',
-    getValue: (g) => Math.round(g / 600).toLocaleString(),
+    getValue: (data) => (data?.financials?.total_drivers || 0).toLocaleString(),
     sub: () => '+12 new drivers today',
     trend: 2.8,
     icon: Car,
@@ -87,14 +88,42 @@ export default function DashboardPage() {
   const router = useRouter()
   const regionInfo = REGIONS[region as RegionCode]
 
-  const baseGMV = region === 'global' ? 2450000 : (regionInfo?.gmv || 284000)
-  const [gmv, setGmv] = useState(baseGMV)
+  const [stats, setStats] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Subtle live updates
   useEffect(() => {
-    const id = setInterval(() => setGmv((g: number) => g + Math.floor(Math.random() * 8000 + 1000)), 4000)
-    return () => clearInterval(id)
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem('vrom_session_token')
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/analytics/financials`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setStats(data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch stats:', err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchStats()
   }, [])
+
+  // 🔌 Real-time WebSocket Data
+  const { data: wsData } = useOCCWebSocket('analytics')
+
+  useEffect(() => {
+    if (wsData) {
+      console.log('WS: Received analytics update:', wsData)
+      setStats((prev: any) => ({
+        ...prev,
+        financials: wsData
+      }))
+    }
+  }, [wsData])
 
   const recentActivity = [
     { type: 'order', msg: `New order placed in ${regionInfo?.name || 'Nairobi'} — #ORD${Math.floor(Math.random() * 90000 + 10000)}`, time: '2 min ago' },
@@ -138,16 +167,22 @@ export default function DashboardPage() {
               <Card
                 key={card.slug}
                 onClick={() => router.push(`/dashboard/kpi/${card.slug}`)}
-                className="p-6 glass-dark border-border hover:border-primary/50 hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group"
+                className={`p-6 glass-dark border-border hover:border-primary/50 hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group ${isLoading ? 'animate-pulse opacity-60' : ''}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <p className="text-sm text-muted-foreground font-medium group-hover:text-foreground transition-colors">
                       {card.title}
                     </p>
-                    <p className="text-3xl font-bold text-foreground mt-2">
-                      {card.getValue(gmv)}
-                    </p>
+                    <div className="h-9 mt-2">
+                       {isLoading ? (
+                         <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                       ) : (
+                         <p className="text-3xl font-bold text-foreground">
+                            {card.getValue(stats)}
+                         </p>
+                       )}
+                    </div>
                     <div className="flex items-center gap-1 mt-2">
                       {isNeg
                         ? <TrendingDown className="h-3.5 w-3.5 text-red-500" />
@@ -158,7 +193,13 @@ export default function DashboardPage() {
                       </span>
                       <span className="text-xs text-muted-foreground">vs last period</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">{card.sub(gmv)}</p>
+                    <div className="h-4 mt-2">
+                       {isLoading ? (
+                         <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+                       ) : (
+                         <p className="text-xs text-muted-foreground">{card.sub(stats)}</p>
+                       )}
+                    </div>
                   </div>
                   <div className={`p-3 rounded-xl ${card.iconBg} group-hover:scale-110 transition-transform`}>
                     <Icon className={`h-6 w-6 ${card.iconColor}`} />

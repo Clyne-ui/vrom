@@ -18,34 +18,33 @@ export default function DashboardLayout({
     // Check authentication
     const checkAuth = async () => {
       try {
-        // Check for demo mode session in localStorage
         const userSession = localStorage.getItem('vrom_user')
         const sessionToken = localStorage.getItem('vrom_session_token')
         
-        if (userSession && sessionToken) {
-          setIsAuthenticated(true)
+        if (!userSession || !sessionToken) {
+          router.push('/login')
           setIsLoading(false)
           return
         }
 
-        // Try to verify with backend
-        const response = await fetch('/api/auth/check', {
-          credentials: 'include',
+        // Verify with real backend
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profile`, {
+          headers: {
+            'Authorization': `Bearer ${sessionToken}`
+          }
         })
         
         if (response.ok) {
           setIsAuthenticated(true)
         } else {
+          // Token expired or invalid
+          localStorage.removeItem('vrom_user')
+          localStorage.removeItem('vrom_session_token')
           router.push('/login')
         }
       } catch (err) {
-        // Check demo mode as fallback
-        const userSession = localStorage.getItem('vrom_user')
-        if (userSession) {
-          setIsAuthenticated(true)
-        } else {
-          router.push('/login')
-        }
+        console.error('Auth verification failed:', err)
+        router.push('/login')
       } finally {
         setIsLoading(false)
       }

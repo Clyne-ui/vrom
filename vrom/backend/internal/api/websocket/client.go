@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
 	"time"
 
@@ -47,6 +48,18 @@ func (c *Client) ReadPump() {
 		}
 		// For now, if the client sends a message up, we just log it or pass it to an incoming channel
 		log.Printf("Received WS message from %s: %s", c.UserID, string(message))
+
+		var req struct {
+			Action string `json:"action"` // "subscribe", "unsubscribe"
+			Topic  string `json:"topic"`
+		}
+		if err := json.Unmarshal(message, &req); err == nil {
+			if req.Action == "subscribe" && req.Topic != "" {
+				c.Hub.Subscribe <- &TopicAction{Client: c, Topic: req.Topic}
+			} else if req.Action == "unsubscribe" && req.Topic != "" {
+				c.Hub.Unsubscribe <- &TopicAction{Client: c, Topic: req.Topic}
+			}
+		}
 	}
 }
 

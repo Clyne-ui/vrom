@@ -18,23 +18,21 @@ var upgrader = websocket.Upgrader{
 // ServeWs handles websocket requests from the peer.
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	tokenString := r.URL.Query().Get("token")
-	if tokenString == "" {
-		http.Error(w, "token is required in query params", http.StatusUnauthorized)
-		return
-	}
+	userID := "anonymous"
 
-	claims, err := services.ValidateToken(tokenString)
-	if err != nil {
-		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-		return
+	if tokenString != "" && tokenString != "undefined" {
+		claims, err := services.ValidateToken(tokenString)
+		if err == nil {
+			userID = claims.UserID
+		}
 	}
-	userID := claims.UserID
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Printf("WS: Upgrade failed for %s: %v", userID, err)
 		return
 	}
+	log.Printf("WS: Upgrade SUCCESS for %s", userID)
 
 	client := &Client{
 		Hub:    hub,

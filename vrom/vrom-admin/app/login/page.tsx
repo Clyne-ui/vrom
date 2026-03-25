@@ -10,6 +10,7 @@ import { AlertCircle } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { UserRole, RegionCode } from '@/lib/types'
 import { REGIONS } from '@/lib/regions'
+import { useUser } from '@/lib/contexts/user-context'
 
 const DEMO_USERS = [
   { email: 'admin@vrom.io', role: 'super_admin' as UserRole, region: 'global' as RegionCode, name: 'Super Admin' },
@@ -20,6 +21,7 @@ const DEMO_USERS = [
 
 export default function LoginPage() {
   const router = useRouter()
+  const { setUser } = useUser()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [selectedRole, setSelectedRole] = useState<UserRole>('regional_admin')
@@ -28,22 +30,41 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const handleQuickLogin = (demoUser: typeof DEMO_USERS[0]) => {
-    const user = {
-      id: Math.random().toString(36).substr(2, 9),
-      email: demoUser.email,
-      name: demoUser.name,
-      role: demoUser.role,
-      region: demoUser.region,
-      regions: demoUser.role === 'super_admin' 
-        ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania'] 
-        : [demoUser.region],
-      loginTime: new Date().toISOString()
+  const handleQuickLogin = async (demoUser: typeof DEMO_USERS[0]) => {
+    setIsLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: demoUser.email, password: 'password123' }),
+      })
+      
+      const data = await res.json()
+      if (res.ok && data.access_token) {
+        const user = {
+          id: data.user.user_id,
+          email: data.user.email,
+          name: data.user.full_name,
+          role: data.user.role === 'admin' ? 'super_admin' : 'regional_admin',
+          region: demoUser.region,
+          regions: data.user.role === 'admin' 
+            ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania'] 
+            : [demoUser.region],
+          loginTime: new Date().toISOString()
+        }
+        
+        localStorage.setItem('vrom_session_token', data.access_token)
+        setUser(user)
+        router.push('/dashboard')
+      } else {
+        setError(data.message || 'Quick login failed')
+      }
+    } catch (err) {
+      setError('Connection to backend failed')
+    } finally {
+      setIsLoading(false)
     }
-    
-    localStorage.setItem('vrom_user', JSON.stringify(user))
-    localStorage.setItem('vrom_session_token', 'demo_token_' + Math.random().toString(36).substr(2, 9))
-    router.push('/dashboard')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,30 +72,39 @@ export default function LoginPage() {
     setError('')
     setIsLoading(true)
 
-    // Simulate login delay
-    await new Promise(resolve => setTimeout(resolve, 800))
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-    // Demo mode: Accept any email/password with selected role and region
-    if (email && password) {
-      const user = {
-        id: Math.random().toString(36).substr(2, 9),
-        email: email,
-        name: email.split('@')[0],
-        role: selectedRole,
-        region: selectedRegion,
-        regions: selectedRole === 'super_admin'
-          ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania']
-          : [selectedRegion],
-        loginTime: new Date().toISOString()
+      const data = await res.json()
+      
+      if (res.ok && data.access_token) {
+        const user = {
+          id: data.user.user_id,
+          email: data.user.email,
+          name: data.user.full_name,
+          role: data.user.role === 'admin' ? 'super_admin' : 'regional_admin',
+          region: selectedRegion,
+          regions: data.user.role === 'admin'
+            ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania']
+            : [selectedRegion],
+          loginTime: new Date().toISOString()
+        }
+        
+        localStorage.setItem('vrom_session_token', data.access_token)
+        setUser(user)
+        
+        // Redirect to dashboard
+        router.push('/dashboard')
+      } else {
+        setError(data.message || 'Invalid email or password')
       }
-      
-      localStorage.setItem('vrom_user', JSON.stringify(user))
-      localStorage.setItem('vrom_session_token', 'demo_token_' + Math.random().toString(36).substr(2, 9))
-      
-      // Redirect to dashboard
-      router.push('/dashboard')
-    } else {
-      setError('Please enter both email and password')
+    } catch (err) {
+      setError('Connection to backend failed. Please ensure the backend is running.')
+    } finally {
       setIsLoading(false)
     }
   }

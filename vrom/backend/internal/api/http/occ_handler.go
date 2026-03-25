@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"vrom-backend/internal/api/websocket"
+	"vrom-backend/internal/models"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
 )
@@ -42,6 +44,12 @@ func HandleOCCFinancialStream(db *sql.DB) http.HandlerFunc {
 					continue
 				}
 				data, _ := json.Marshal(financials)
+
+				// Broadcast to ANY connected admin via WebSockets too
+				if websocket.GlobalHub != nil {
+					websocket.GlobalHub.BroadcastToTopic(r.Context(), "analytics", financials)
+				}
+
 				fmt.Fprintf(w, "event: financials\ndata: %s\n\n", data)
 				flusher.Flush()
 			}
@@ -363,6 +371,67 @@ func HandleOCCRejectContent(db *sql.DB) http.HandlerFunc {
 		repository.WriteAuditLog(db, adminEmail, "REJECTED_CONTENT", req.ProductID, r.RemoteAddr)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "Rejected & Deactivated"})
+	}
+}
+
+// ─────────────────────────────────────────────────
+// SECTION 7.5: SECURITY ALERTS
+// ─────────────────────────────────────────────────
+
+func HandleOCCGetSecurityAlerts(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status := r.URL.Query().Get("status")
+		if status == "" {
+			status = "active"
+		}
+		alerts, err := repository.GetSecurityAlerts(db, status)
+		if err != nil {
+			http.Error(w, "Failed to fetch security alerts", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(alerts)
+	}
+}
+
+func HandleOCCResolveAlert(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AlertID string `json:"alert_id"`
+			Action  string `json:"action"` // 'resolved', 'ignored'
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AlertID == "" {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+
+		err := repository.UpdateSecurityAlert(db, req.AlertID, req.Action)
+		if err != nil {
+			http.Error(w, "Failed to update alert", http.StatusInternalServerError)
+			return
+		}
+
+		adminEmail := r.Header.Get("X-User-Email")
+		repository.WriteAuditLog(db, adminEmail, "RESOLVED_SECURITY_ALERT", req.AlertID, r.RemoteAddr)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success", "message": "Alert updated."})
+	}
+}
+
+func HandleOCCGetLiveFleet(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		trips, err := repository.GetAllActiveTrips(db)
+		if err != nil {
+			http.Error(w, "Failed to fetch active fleet", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(models.LiveFleetResponse{
+			ActiveTrips: trips,
+			Hotspots:    []interface{}{}, // Placeholder
+		})
 	}
 }
 

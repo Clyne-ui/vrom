@@ -16,9 +16,14 @@ import (
 
 func HandleProfile(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		email := r.URL.Query().Get("email")
+		email := r.Header.Get("X-User-Email")
 		if email == "" {
-			http.Error(w, "Email is required", http.StatusBadRequest)
+			// Fallback to query param if needed (for legacy or specific cases)
+			email = r.URL.Query().Get("email")
+		}
+
+		if email == "" {
+			http.Error(w, "Identification required (X-User-Email header or email param missing)", http.StatusBadRequest)
 			return
 		}
 

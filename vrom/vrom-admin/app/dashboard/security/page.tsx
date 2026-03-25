@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, Lock, LogIn, Shield, Zap, Clock, Eye, X, CheckCircle, ShieldAlert } from 'lucide-react'
+import { AlertTriangle, Lock, LogIn, Shield, Zap, Eye, CheckCircle, ShieldAlert } from 'lucide-react'
+import { AlertCard, SecurityAlert } from '@/components/dashboard/security/alert-card'
+import { IncidentDrawer } from '@/components/dashboard/security/incident-drawer'
 
 interface AuditLog {
   id: string
@@ -15,18 +17,7 @@ interface AuditLog {
   details: string
 }
 
-interface Alert {
-  id: string
-  type: 'fraud' | 'security' | 'anomaly' | 'policy'
-  severity: 'critical' | 'high' | 'medium' | 'low'
-  title: string
-  description: string
-  timestamp: string
-  status: 'active' | 'resolved' | 'dismissed'
-  region?: string
-}
-
-const INITIAL_ALERTS: Alert[] = [
+const INITIAL_ALERTS: SecurityAlert[] = [
   { id: 'ALT001', type: 'fraud', severity: 'critical', title: 'Potential Fraud Detected', description: 'Multiple failed transactions from same account within 10 minutes', timestamp: '2024-03-23 15:42:00', status: 'active', region: 'kenya' },
   { id: 'ALT002', type: 'security', severity: 'high', title: 'Unusual Access Pattern', description: 'Admin account accessed from new location (unknown IP)', timestamp: '2024-03-23 15:35:00', status: 'active', region: 'global' },
   { id: 'ALT003', type: 'anomaly', severity: 'medium', title: 'High Volume Anomaly', description: 'Order volume 45% above 24-hour average', timestamp: '2024-03-23 15:15:00', status: 'active', region: 'nigeria' },
@@ -35,30 +26,101 @@ const INITIAL_ALERTS: Alert[] = [
 
 export default function SecurityPage() {
   const [maintenanceMode, setMaintenanceMode] = useState(false)
-  const [alerts, setAlerts] = useState<Alert[]>(INITIAL_ALERTS)
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
-
-  const [auditLogs] = useState<AuditLog[]>([
-    { id: 'LOG001', action: 'User Login', actor: 'admin@vrom.io', timestamp: '2024-03-23 15:45:22', ipAddress: '192.168.1.100', result: 'success', details: 'Successful admin login with 2FA verification' },
-    { id: 'LOG002', action: 'Driver Verification', actor: 'system', timestamp: '2024-03-23 15:40:10', ipAddress: '192.168.1.100', result: 'success', details: 'Driver license verified - DRV001' },
-    { id: 'LOG003', action: 'Payout Initiated', actor: 'admin@vrom.io', timestamp: '2024-03-23 15:35:45', ipAddress: '192.168.1.100', result: 'success', details: 'Payout of $50,000 to merchant account' },
-    { id: 'LOG004', action: 'Failed Login Attempt', actor: 'unknown@email.com', timestamp: '2024-03-23 15:20:30', ipAddress: '203.45.67.89', result: 'failed', details: 'Invalid credentials provided' },
-  ])
-
+  const [alerts, setAlerts] = useState<SecurityAlert[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedAlert, setSelectedAlert] = useState<SecurityAlert | null>(null)
   const activeAlerts = alerts.filter(a => a.status === 'active')
 
-  const handleResolveAlert = (id: string, newStatus: 'resolved' | 'dismissed') => {
-    setAlerts(alerts.map(a => a.id === id ? { ...a, status: newStatus } : a))
-    setSelectedAlert(null)
+  useEffect(() => {
+    const fetchSecurityData = async () => {
+      try {
+        const token = localStorage.getItem('vrom_session_token')
+        const headers = { 'Authorization': `Bearer ${token}` }
+
+        // Fetch Maintenance Status
+        const maintRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/admin/maintenance`, { headers })
+        if (maintRes.ok) {
+          const data = await maintRes.json()
+          setMaintenanceMode(data.maintenance_mode)
+        }
+
+        // Fetch Alerts
+        const alertsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/security/alerts?status=active`, { headers })
+        if (alertsRes.ok) {
+          const data = await alertsRes.json()
+          setAlerts(data.map((a: any) => ({
+            id: a.alert_id,
+            type: a.type,
+            severity: a.severity,
+            title: a.type.charAt(0).toUpperCase() + a.type.slice(1) + ' Alert',
+            description: a.message,
+            timestamp: a.created_at,
+            status: a.status,
+            region: a.region
+          })))
+        }
+
+        // Fetch Audit Logs
+        const auditRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/analytics/audit`, { headers })
+        if (auditRes.ok) {
+          const data = await auditRes.json()
+          setAuditLogs(data.map((l: any) => ({
+            id: l.log_id,
+            action: l.action,
+            actor: l.admin_email,
+            timestamp: l.created_at,
+            ipAddress: l.ip_address,
+            result: 'success', // Backend doesn't store result yet, assuming success for logs present
+            details: `Action on ${l.target_id}`
+          })))
+        }
+      } catch (err) {
+        console.error('Failed to fetch security data:', err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchSecurityData()
+  }, [])
+
+  const handleToggleMaintenance = async () => {
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/admin/maintenance/toggle`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ active: !maintenanceMode })
+      })
+      if (res.ok) {
+        setMaintenanceMode(!maintenanceMode)
+      }
+    } catch (err) {
+      console.error('Failed to toggle maintenance:', err)
+    }
   }
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-500/20 text-red-500 border-red-500/30'
-      case 'high': return 'bg-orange-500/20 text-orange-500 border-orange-500/30'
-      case 'medium': return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30'
-      case 'low': return 'bg-blue-500/20 text-blue-500 border-blue-500/30'
-      default: return 'bg-gray-500/20 text-gray-500'
+  const handleResolveAlert = async (id: string, newStatus: 'resolved' | 'dismissed') => {
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/security/resolve`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ alert_id: id, action: newStatus })
+      })
+      if (res.ok) {
+        setAlerts(alerts.filter(a => a.id !== id))
+        setSelectedAlert(null)
+      }
+    } catch (err) {
+      console.error('Failed to resolve alert:', err)
     }
   }
 
@@ -88,7 +150,7 @@ export default function SecurityPage() {
               </p>
             </div>
           </div>
-          <Button onClick={() => setMaintenanceMode(!maintenanceMode)} className={maintenanceMode ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-primary'}>
+          <Button onClick={handleToggleMaintenance} className={maintenanceMode ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-primary'}>
             {maintenanceMode ? 'DISABLE KILL SWITCH' : 'ENABLE KILL SWITCH'}
           </Button>
         </div>
@@ -126,23 +188,11 @@ export default function SecurityPage() {
         <div className="divide-y divide-border">
           {activeAlerts.length > 0 ? (
             activeAlerts.map(alert => (
-              <div key={alert.id} onClick={() => setSelectedAlert(alert)} className="p-5 hover:bg-muted/50 transition-colors cursor-pointer flex items-center justify-between group">
-                <div className="flex items-start gap-4">
-                  <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${getSeverityColor(alert.severity)}`}>
-                    {alert.severity}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-foreground group-hover:text-primary transition-colors">{alert.title}</h4>
-                    <p className="text-sm text-muted-foreground mt-0.5">{alert.description}</p>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground font-medium">
-                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {alert.timestamp}</span>
-                      <span className="uppercase tracking-wider">Type: {alert.type}</span>
-                      {alert.region && <span className="uppercase tracking-wider text-primary">Region: {alert.region}</span>}
-                    </div>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">Review Incident</Button>
-              </div>
+              <AlertCard
+                key={alert.id}
+                alert={alert}
+                onClick={setSelectedAlert}
+              />
             ))
           ) : (
             <div className="p-10 text-center text-muted-foreground flex flex-col items-center gap-3">
@@ -154,60 +204,11 @@ export default function SecurityPage() {
       </Card>
 
       {/* Alert Details Drawer */}
-      {selectedAlert && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedAlert(null)} />
-          <div className="relative w-full max-w-lg bg-background border-l border-border h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right-full">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <ShieldAlert className="h-5 w-5 text-destructive" /> Incident Report
-                </h2>
-                <Button variant="ghost" size="icon" onClick={() => setSelectedAlert(null)}><X className="h-5 w-5" /></Button>
-              </div>
-
-              <div className="space-y-6">
-                <div className="p-4 rounded-xl bg-muted/50 border border-border">
-                  <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase mb-3 ${getSeverityColor(selectedAlert.severity)}`}>
-                    {selectedAlert.severity} PRIORITY
-                  </div>
-                  <h3 className="text-2xl font-bold text-foreground mb-2">{selectedAlert.title}</h3>
-                  <p className="text-muted-foreground">{selectedAlert.description}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Card className="p-4 glass-dark">
-                    <p className="text-xs text-muted-foreground uppercase font-semibold">Incident ID</p>
-                    <p className="font-mono mt-1 text-sm">{selectedAlert.id}</p>
-                  </Card>
-                  <Card className="p-4 glass-dark">
-                    <p className="text-xs text-muted-foreground uppercase font-semibold">Time Detected</p>
-                    <p className="text-sm mt-1">{selectedAlert.timestamp}</p>
-                  </Card>
-                  <Card className="p-4 glass-dark">
-                    <p className="text-xs text-muted-foreground uppercase font-semibold">Classification</p>
-                    <p className="text-sm mt-1 uppercase">{selectedAlert.type}</p>
-                  </Card>
-                  <Card className="p-4 glass-dark">
-                    <p className="text-xs text-muted-foreground uppercase font-semibold">Affected Region</p>
-                    <p className="text-sm mt-1 uppercase text-primary font-bold">{selectedAlert.region || 'GLOBAL'}</p>
-                  </Card>
-                </div>
-
-                <div className="space-y-3 pt-6 border-t border-border">
-                  <h4 className="font-semibold">Recommended Actions</h4>
-                  <Button onClick={() => handleResolveAlert(selectedAlert.id, 'resolved')} className="w-full bg-green-600 hover:bg-green-700 text-white gap-2">
-                    <CheckCircle className="h-4 w-4" /> Mark as Resolved & Secure
-                  </Button>
-                  <Button onClick={() => handleResolveAlert(selectedAlert.id, 'dismissed')} variant="outline" className="w-full">
-                    Dismiss as False Alarm
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <IncidentDrawer
+        alert={selectedAlert}
+        onClose={() => setSelectedAlert(null)}
+        onResolve={handleResolveAlert}
+      />
 
       {/* Audit Logs */}
       <Card className="glass-dark">

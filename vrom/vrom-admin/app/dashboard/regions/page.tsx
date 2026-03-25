@@ -1,37 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useUser } from '@/lib/contexts/user-context'
+import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MapPin, TrendingUp, Users, ShoppingBag, Zap, Globe, Lock, ShieldAlert, X, ShieldCheck, CheckCircle, Trash2, Eye, Unlock } from 'lucide-react'
+import { MapPin, TrendingUp, Users, ShoppingBag, Globe, Lock, Zap } from 'lucide-react'
 import { REGION_LIST } from '@/lib/regions'
-import { useUser } from '@/lib/contexts/user-context'
-import { useRouter } from 'next/navigation'
-
-interface ExtendedRegion {
-  code: string
-  name: string
-  country: string
-  status: 'active' | 'inactive' | 'blocked'
-  currency: string
-  timezone: string
-  drivers: number
-  riders: number
-  merchants: number
-  activeOrders: number
-  gmv: number
-  hasIssue?: boolean
-}
-
-// Mock users inside a region for management
-interface RegionUser {
-  id: string
-  name: string
-  role: 'admin' | 'rider' | 'merchant' | 'customer'
-  status: 'active' | 'pending_approval' | 'blocked'
-  documents?: { type: string; url: string; approved: boolean | null }[]
-}
+import { RegionCard, ExtendedRegion } from '@/components/dashboard/regions/region-card'
+import { ManagementHubDrawer, RegionUser } from '@/components/dashboard/regions/management-hub-drawer'
+import { useOCCWebSocket } from '@/lib/hooks/use-occ-websocket'
 
 const DEMO_REGION_USERS: Record<string, RegionUser[]> = {
   kenya: [
@@ -53,21 +32,84 @@ export default function RegionsPage() {
   const router = useRouter()
 
   const [regions, setRegions] = useState<ExtendedRegion[]>(
-    REGION_LIST.map(r => ({ ...r, hasIssue: r.code === 'nigeria' })) // Mock issue in Nigeria
+    REGION_LIST.map(r => ({ ...r, status: 'active', hasIssue: r.code === 'nigeria' }))
   )
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
   const [newRegion, setNewRegion] = useState({ name: '', country: '', currency: '', timezone: '' })
 
-  // Manage Region Drawer
   const [managingRegion, setManagingRegion] = useState<string | null>(null)
-  const [regionUsers, setRegionUsers] = useState<Record<string, RegionUser[]>>(DEMO_REGION_USERS)
+  const [regionUsers, setRegionUsers] = useState<Record<string, RegionUser[]>>({})
+  const [isFetchingUsers, setIsFetchingUsers] = useState(false)
+  const [liveStats, setLiveStats] = useState<any>(null)
+
+  // 🔌 Real-time WebSocket Data
+  const { data: wsData } = useOCCWebSocket('analytics')
+
+  useEffect(() => {
+    if (wsData) {
+      setLiveStats(wsData)
+    }
+  }, [wsData])
+
+  useEffect(() => {
+    const fetchGlobal = async () => {
+      try {
+        const token = localStorage.getItem('vrom_session_token')
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/analytics/financials`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setLiveStats(data.financials)
+        }
+      } catch (err) {
+        console.error('Failed to fetch global stats:', err)
+      }
+    }
+    fetchGlobal()
+  }, [])
+
+  // Fetch users for the managing region
+  useEffect(() => {
+    if (!managingRegion) return
+
+    const fetchRegionUsers = async () => {
+      setIsFetchingUsers(true)
+      try {
+        const token = localStorage.getItem('vrom_session_token')
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/search?q=&role=`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          const dataArray = Array.isArray(data) ? data : []
+          // Since backend doesn't filter by region yet, we'll map all users here for demo/dev
+          setRegionUsers(prev => ({
+            ...prev,
+            [managingRegion]: dataArray.map((u: any) => ({
+              id: u.user_id,
+              name: u.full_name,
+              role: u.role,
+              status: u.is_verified ? 'active' : 'blocked'
+            }))
+          }))
+        }
+      } catch (err) {
+        console.error('Failed to fetch region users:', err)
+      } finally {
+        setIsFetchingUsers(false)
+      }
+    }
+
+    fetchRegionUsers()
+  }, [managingRegion])
 
   if (role !== 'super_admin') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <Lock className="h-16 w-16 text-destructive mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+        <h1 className="text-2xl font-bold mb-2 text-foreground">Access Denied</h1>
         <p className="text-muted-foreground mb-6">Only Super Admins can manage regions</p>
         <Button onClick={() => router.push('/dashboard')}>Go Back</Button>
       </div>
@@ -107,21 +149,36 @@ export default function RegionsPage() {
     if (managingRegion === code) setManagingRegion(null)
   }
 
-  // User inner management actions
-  const handleUserAction = (regionCode: string, userId: string, action: 'block' | 'delete' | 'approve_doc' | 'decline_doc') => {
-    setRegionUsers(prev => {
-      const users = prev[regionCode] || []
-      return {
-        ...prev,
-        [regionCode]: users.map(u => {
-          if (u.id !== userId) return u
-          if (action === 'block') return { ...u, status: u.status === 'blocked' ? 'active' : 'blocked' } as RegionUser
-          if (action === 'approve_doc') return { ...u, status: 'active', documents: u.documents?.map(d => ({ ...d, approved: true })) } as RegionUser
-          if (action === 'decline_doc') return { ...u, status: 'blocked', documents: u.documents?.map(d => ({ ...d, approved: false })) } as RegionUser
-          return u
-        }).filter(u => action !== 'delete' || u.id !== userId)
+  const handleUserAction = async (regionCode: string, userId: string, action: 'block' | 'delete' | 'approve_doc' | 'decline_doc') => {
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      
+      if (action === 'block') {
+        const isBlocked = regionUsers[regionCode]?.find(u => u.id === userId)?.status === 'blocked'
+        const endpoint = isBlocked ? 'unsuspend' : 'suspend'
+        
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/admin/${endpoint}`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ user_id: userId })
+        })
+
+        if (res.ok) {
+          setRegionUsers(prev => ({
+            ...prev,
+            [regionCode]: prev[regionCode].map(u => 
+              u.id === userId ? { ...u, status: isBlocked ? 'active' : 'blocked' } as RegionUser : u
+            )
+          }))
+        }
       }
-    })
+      // Handle other actions (delete, approve_doc) if backend has endpoints
+    } catch (err) {
+      console.error('Action failed:', err)
+    }
   }
 
   const stats = {
@@ -133,8 +190,7 @@ export default function RegionsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
+    <div className="space-y-8 p-6">
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold text-foreground">Regional Management</h1>
@@ -145,14 +201,13 @@ export default function RegionsPage() {
         </Button>
       </div>
 
-      {/* Global Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Total Regions', val: stats.totalRegions, sub: `${stats.activeRegions} Active`, icon: Globe, iconColor: 'text-primary' },
-          { label: 'Total Drivers', val: stats.totalDrivers.toLocaleString(), sub: '+12% from last month', icon: Users, iconColor: 'text-green-500' },
-          { label: 'Total Riders', val: stats.totalRiders.toLocaleString(), sub: '+18% from last month', icon: Users, iconColor: 'text-blue-500' },
-          { label: 'Total Merchants', val: regions.reduce((sum, r) => sum + r.merchants, 0).toLocaleString(), sub: '+8% from last month', icon: ShoppingBag, iconColor: 'text-purple-500' },
-          { label: 'Global GMV', val: `$${(stats.totalGMV / 1000000).toFixed(1)}M`, sub: '+24% YoY', icon: TrendingUp, iconColor: 'text-orange-500' },
+          { label: 'Platform Drivers', val: (liveStats?.total_drivers || 0).toLocaleString(), sub: 'Across all regions', icon: Users, iconColor: 'text-green-500' },
+          { label: 'Platform Riders', val: (liveStats?.total_riders || 0).toLocaleString(), sub: 'Across all regions', icon: Users, iconColor: 'text-blue-500' },
+          { label: 'Total Sales', val: (liveStats?.completed_sales || 0).toLocaleString(), sub: 'Lifetime volume', icon: ShoppingBag, iconColor: 'text-purple-500' },
+          { label: 'Global GMV', val: `$${(liveStats?.gmv || 0).toLocaleString()}`, sub: 'Real-time platform value', icon: TrendingUp, iconColor: 'text-orange-500' },
         ].map((s, i) => {
           const Icon = s.icon
           return (
@@ -170,15 +225,14 @@ export default function RegionsPage() {
         })}
       </div>
 
-      {/* Add Region Form */}
       {showAddForm && (
         <Card className="p-6 glass-dark bg-primary/5 border border-primary/30 animate-in fade-in slide-in-from-top-4">
           <h2 className="font-bold text-lg mb-4 flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" /> Setup New Region</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div><label className="text-sm font-medium">City / Region Name</label><Input placeholder="e.g. Accra" value={newRegion.name} onChange={e => setNewRegion({ ...newRegion, name: e.target.value })} className="mt-1" /></div>
-            <div><label className="text-sm font-medium">Country</label><Input placeholder="e.g. Ghana" value={newRegion.country} onChange={e => setNewRegion({ ...newRegion, country: e.target.value })} className="mt-1" /></div>
-            <div><label className="text-sm font-medium">Currency</label><Input placeholder="e.g. GHS" value={newRegion.currency} onChange={e => setNewRegion({ ...newRegion, currency: e.target.value })} className="mt-1" /></div>
-            <div><label className="text-sm font-medium">Timezone</label><Input placeholder="e.g. GMT" value={newRegion.timezone} onChange={e => setNewRegion({ ...newRegion, timezone: e.target.value })} className="mt-1" /></div>
+            <div><label className="text-sm font-medium text-foreground">City / Region Name</label><Input placeholder="e.g. Accra" value={newRegion.name} onChange={e => setNewRegion({ ...newRegion, name: e.target.value })} className="mt-1" /></div>
+            <div><label className="text-sm font-medium text-foreground">Country</label><Input placeholder="e.g. Ghana" value={newRegion.country} onChange={e => setNewRegion({ ...newRegion, country: e.target.value })} className="mt-1" /></div>
+            <div><label className="text-sm font-medium text-foreground">Currency</label><Input placeholder="e.g. GHS" value={newRegion.currency} onChange={e => setNewRegion({ ...newRegion, currency: e.target.value })} className="mt-1" /></div>
+            <div><label className="text-sm font-medium text-foreground">Timezone</label><Input placeholder="e.g. GMT" value={newRegion.timezone} onChange={e => setNewRegion({ ...newRegion, timezone: e.target.value })} className="mt-1" /></div>
           </div>
           <div className="flex gap-3">
             <Button onClick={handleCreateRegion} className="bg-primary">Launch Region</Button>
@@ -187,64 +241,22 @@ export default function RegionsPage() {
         </Card>
       )}
 
-      {/* Search Filter */}
       <div className="relative max-w-md">
         <Input placeholder="Search regions by name or country..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
       </div>
 
-      {/* Regions Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRegions.map((region) => {
-          const isProblem = region.hasIssue
-          return (
-            <Card key={region.code} className={`p-6 glass-dark transition-all ${isProblem ? 'border-destructive bg-destructive/10 border-2' : ''}`}>
-              <div className="space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${isProblem ? 'bg-destructive/20' : 'bg-primary/20'}`}>
-                      {isProblem ? <ShieldAlert className="h-5 w-5 text-destructive" /> : <MapPin className="h-5 w-5 text-primary" />}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-foreground text-lg flex gap-2">
-                        {region.name} {isProblem && <span className="animate-pulse text-destructive">⚠️ Alert</span>}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">{region.country}</p>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${region.status === 'active' ? 'bg-green-500/20 text-green-500' :
-                    region.status === 'blocked' ? 'bg-destructive/20 text-destructive' : 'bg-muted text-muted-foreground'
-                    }`}>
-                    {region.status}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 py-3 border-y border-border">
-                  <div><p className="text-xs text-muted-foreground">Drivers</p><p className="font-bold">{region.drivers.toLocaleString()}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Riders</p><p className="font-bold">{region.riders.toLocaleString()}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Merchants</p><p className="font-bold">{region.merchants.toLocaleString()}</p></div>
-                  <div><p className="text-xs text-muted-foreground">GMV</p><p className="font-bold text-primary">${region.gmv.toLocaleString()}</p></div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={() => setManagingRegion(region.code)} className="flex-1 bg-primary/20 hover:bg-primary/40 text-primary border-0">
-                    Manage Hub
-                  </Button>
-                  <Button size="sm" variant="outline" className={`flex-1 ${region.status === 'blocked' ? 'text-green-500 border-green-500/50' : 'text-yellow-500 border-yellow-500/50'}`}
-                    onClick={() => handleBlockRegion(region.code)}>
-                    {region.status === 'blocked' ? <Unlock className="h-4 w-4 mr-1" /> : <Lock className="h-4 w-4 mr-1" />}
-                    {region.status === 'blocked' ? 'Unblock' : 'Block'}
-                  </Button>
-                  <Button size="icon" variant="outline" className="h-9 w-9 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => handleDeleteRegion(region.code)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )
-        })}
+        {filteredRegions.map((region) => (
+          <RegionCard
+            key={region.code}
+            region={region}
+            onManage={setManagingRegion}
+            onBlock={handleBlockRegion}
+            onDelete={handleDeleteRegion}
+          />
+        ))}
       </div>
 
-      {/* Multi-Country Expansion Section */}
       <Card className="p-6 glass-dark border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer" onClick={() => setShowAddForm(true)}>
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
@@ -256,116 +268,15 @@ export default function RegionsPage() {
         </div>
       </Card>
 
-      {/* Regional Management Drawer (Room) */}
-      {managingRegion && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setManagingRegion(null)} />
-          <div className="relative w-full max-w-2xl bg-background border-l border-border h-full overflow-y-auto shadow-2xl flex flex-col animate-in slide-in-from-right-full">
-
-            {/* Drawer Header */}
-            <div className="p-6 border-b border-border bg-muted/20 flex justify-between items-center sticky top-0 z-10 backdrop-blur-md">
-              <div>
-                <h2 className="text-2xl font-bold uppercase tracking-wider text-primary">
-                  {regions.find(r => r.code === managingRegion)?.name} Hub
-                </h2>
-                <p className="text-sm text-muted-foreground">Admin & User Control Center</p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setManagingRegion(null)}><X className="h-6 w-6" /></Button>
-            </div>
-
-            <div className="p-6 space-y-8 flex-1">
-
-              {/* Alert resolution for affected regions */}
-              {regions.find(r => r.code === managingRegion)?.hasIssue && (
-                <Card className="p-4 bg-destructive/10 border-destructive/50 flex justify-between items-center text-destructive">
-                  <div className="flex gap-3">
-                    <ShieldAlert className="h-6 w-6" />
-                    <div>
-                      <h4 className="font-bold">Critical Issue Detected</h4>
-                      <p className="text-sm">High rates of declined orders in the last hour.</p>
-                    </div>
-                  </div>
-                  <Button size="sm" variant="outline" className="text-destructive border-destructive" onClick={() => {
-                    setRegions(prev => prev.map(r => r.code === managingRegion ? { ...r, hasIssue: false } : r))
-                  }}>Resolve Issue</Button>
-                </Card>
-              )}
-
-              {/* Regional Admins */}
-              <div>
-                <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> Assigned Admins</h3>
-                <div className="space-y-3">
-                  {regionUsers[managingRegion]?.filter(u => u.role === 'admin').map(admin => (
-                    <div key={admin.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
-                      <div>
-                        <p className="font-semibold">{admin.name}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{admin.id}</p>
-                      </div>
-                      <Button size="sm" variant="outline" className="text-destructive border-destructive/30" onClick={() => handleUserAction(managingRegion, admin.id, 'delete')}>
-                        Remove Admin
-                      </Button>
-                    </div>
-                  ))}
-                  <Button variant="outline" className="w-full border-dashed">Assign New Admin to Region</Button>
-                </div>
-              </div>
-
-              {/* Rider / User Approvals */}
-              <div>
-                <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><Users className="h-5 w-5 text-blue-500" /> Pending Approvals & Users</h3>
-                <div className="space-y-3">
-                  {regionUsers[managingRegion]?.filter(u => u.role !== 'admin').map(user => (
-                    <Card key={user.id} className="p-4 border border-border bg-card">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-semibold flex items-center gap-2">
-                            {user.name}
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted uppercase font-bold">{user.role}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold ${user.status === 'pending_approval' ? 'bg-yellow-500/20 text-yellow-500' : user.status === 'blocked' ? 'bg-destructive/20 text-destructive' : 'bg-green-500/20 text-green-500'}`}>
-                              {user.status.replace('_', ' ')}
-                            </span>
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono">{user.id}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className={user.status === 'blocked' ? 'text-green-500 border-green-500/30' : 'text-orange-500 border-orange-500/30'} onClick={() => handleUserAction(managingRegion, user.id, 'block')}>
-                            {user.status === 'blocked' ? 'Unblock' : 'Block'}
-                          </Button>
-                          <Button size="icon" variant="outline" className="h-8 w-8 text-destructive border-destructive/30" onClick={() => handleUserAction(managingRegion, user.id, 'delete')}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Documents Section for Pending Riders */}
-                      {user.status === 'pending_approval' && user.documents && (
-                        <div className="p-3 bg-muted/40 rounded-lg mt-2">
-                          <p className="text-xs font-semibold mb-2 uppercase text-muted-foreground">Submitted Documents</p>
-                          <div className="space-y-2 mb-3">
-                            {user.documents.map((doc, idx) => (
-                              <div key={idx} className="flex justify-between text-sm items-center p-2 bg-background rounded border border-border">
-                                <span className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> {doc.type}</span>
-                                <span className="text-xs font-bold text-primary cursor-pointer hover:underline">View File</span>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" className="w-full bg-green-600 hover:bg-green-700" onClick={() => handleUserAction(managingRegion, user.id, 'approve_doc')}><CheckCircle className="h-3 w-3 mr-1" /> Approve Rider</Button>
-                            <Button size="sm" variant="outline" className="w-full text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => handleUserAction(managingRegion, user.id, 'decline_doc')}><X className="h-3 w-3 mr-1" /> Decline</Button>
-                          </div>
-                        </div>
-                      )}
-                    </Card>
-                  ))}
-                  {regionUsers[managingRegion]?.filter(u => u.role !== 'admin').length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4 bg-muted/20 rounded-lg">No active users or pending approvals in this region.</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ManagementHubDrawer
+        regionCode={managingRegion}
+        regionName={regions.find(r => r.code === managingRegion)?.name}
+        hasIssue={regions.find(r => r.code === managingRegion)?.hasIssue}
+        users={regionUsers[managingRegion || ''] || []}
+        onClose={() => setManagingRegion(null)}
+        onResolveIssue={(code) => setRegions(prev => prev.map(r => r.code === code ? { ...r, hasIssue: false } : r))}
+        onUserAction={handleUserAction}
+      />
     </div>
   )
 }

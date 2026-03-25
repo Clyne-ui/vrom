@@ -150,6 +150,8 @@ type AdminUserView struct {
 	IsVerified  bool    `json:"is_verified"`
 	CreatedAt   string  `json:"created_at"`
 	Balance     float64 `json:"balance"`
+	OrdersCount int     `json:"orders_count"`
+	TripsCount  int     `json:"trips_count"`
 }
 
 type TripSummary struct {
@@ -159,6 +161,10 @@ type TripSummary struct {
 	CreatedAt      string  `json:"created_at"`
 	PickupAddress  string  `json:"pickup_address"`
 	DropoffAddress string  `json:"dropoff_address"`
+	PLat           float64 `json:"p_lat"`
+	PLng           float64 `json:"p_lng"`
+	DLat           float64 `json:"d_lat"`
+	DLng           float64 `json:"d_lng"`
 }
 
 type OrderSummary struct {
@@ -209,4 +215,20 @@ type RiderLeaderboardEntry struct {
 	TripCount     int     `json:"trip_count"`
 	TotalEarnings float64 `json:"total_earnings"`
 	AvgRating     float64 `json:"avg_rating"`
+}
+
+type OCCSecurityAlert struct {
+	AlertID    string `json:"alert_id"`
+	Type       string `json:"type"`
+	Severity   string `json:"severity"`
+	Message    string `json:"message"`
+	Status     string `json:"status"`
+	Region     string `json:"region"`
+	CreatedAt  string `json:"created_at"`
+	ResolvedAt string `json:"resolved_at,omitempty"`
+}
+
+type LiveFleetResponse struct {
+	ActiveTrips []TripSummary `json:"active_trips"`
+	Hotspots    []interface{}  `json:"hotspots"` // Potential future expansion
 }

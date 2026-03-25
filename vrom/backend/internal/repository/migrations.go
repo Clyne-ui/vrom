@@ -41,6 +41,19 @@ func InitDatabase(db *sql.DB) {
 			flagged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)`)
 
+	// 4. Security Alerts Table
+	_, _ = db.Exec(`
+		CREATE TABLE IF NOT EXISTS occ_security_alerts (
+			alert_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			type TEXT NOT NULL, -- 'fraud', 'suspicious_activity', 'compliance'
+			severity TEXT NOT NULL, -- 'critical', 'high', 'medium', 'low'
+			message TEXT NOT NULL,
+			status TEXT DEFAULT 'active', -- 'active', 'resolved', 'ignored'
+			region TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			resolved_at TIMESTAMP WITH TIME ZONE
+		)`)
+
 	// 4. Trips Table enhancements (OTP)
 	_, _ = db.Exec("ALTER TABLE trips ADD COLUMN IF NOT EXISTS delivery_otp CHAR(4)")
 

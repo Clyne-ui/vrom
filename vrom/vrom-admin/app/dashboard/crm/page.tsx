@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button'
 import {
   Search, Download, Plus, Trash2, Lock, Unlock, Eye, X,
   User, ChevronUp, ChevronDown, ShoppingBag, Car, Bike,
-  Wallet, Star, AlertCircle, Phone, Mail, Calendar, BarChart3
+  Wallet, Star, AlertCircle, Phone, Mail, Calendar, BarChart3,
+  ShieldCheck
 } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
+import { useEffect, useCallback } from 'react'
 
-type UserType = 'customer' | 'seller' | 'rider'
+type UserType = 'customer' | 'seller' | 'rider' | 'admin' | 'moderator'
 type UserStatus = 'active' | 'blocked' | 'suspended'
 
 interface VromUser {
@@ -36,11 +38,15 @@ const TYPE_ICONS: Record<UserType, any> = {
   customer: User,
   seller: ShoppingBag,
   rider: Bike,
+  admin: Lock,
+  moderator: ShieldCheck,
 }
 const TYPE_COLORS: Record<UserType, string> = {
   customer: 'bg-blue-500/15 text-blue-400',
   seller: 'bg-green-500/15 text-green-400',
   rider: 'bg-orange-500/15 text-orange-400',
+  admin: 'bg-purple-500/15 text-purple-400',
+  moderator: 'bg-pink-500/15 text-pink-400',
 }
 const STATUS_COLORS: Record<UserStatus, string> = {
   active: 'bg-green-500/15 text-green-500',
@@ -62,7 +68,8 @@ type SortKey = 'name' | 'orders' | 'trips' | 'walletBalance' | 'rating'
 
 export default function CRMPage() {
   const { role, region } = useUser()
-  const [users, setUsers] = useState<VromUser[]>(DEMO_USERS)
+  const [users, setUsers] = useState<VromUser[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<UserType | 'all'>('all')
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'all'>('all')
@@ -98,14 +105,74 @@ export default function CRMPage() {
     else { setSortBy(key); setSortDir('desc') }
   }
 
-  const toggleBlock = (id: string) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, status: u.status === 'blocked' ? 'active' : 'blocked' } : u))
+  const fetchUsers = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/search?q=${search}&role=${filterType === 'all' ? '' : filterType}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const dataArray = Array.isArray(data) ? data : []
+        // Map backend AdminUserView to frontend VromUser
+        const mapped: VromUser[] = dataArray.map((u: any) => ({
+          id: u.user_id,
+          name: u.full_name,
+          email: u.email,
+          phone: u.phone_number,
+          type: u.role as UserType,
+          status: u.is_verified ? 'active' : 'blocked',
+          joinDate: u.created_at?.split('T')[0] || 'N/A',
+          region: 'kenya', // Placeholder or add to backend
+          orders: u.orders_count || 0,
+          trips: u.trips_count || 0,
+          walletBalance: u.balance || 0,
+          totalSpent: 0, // Need backend support
+          totalEarned: 0, // Need backend support
+          rating: 0, // Need backend support
+          sales: 0,
+        }))
+        setUsers(mapped)
+      }
+    } catch (err) {
+      console.error('Failed to fetch users:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [search, filterType])
+
+  useEffect(() => {
+    const id = setTimeout(fetchUsers, 500) // Debounce search
+    return () => clearTimeout(id)
+  }, [fetchUsers])
+
+  const toggleBlock = async (id: string, currentStatus: UserStatus) => {
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const endpoint = currentStatus === 'blocked' ? 'unsuspend' : 'suspend'
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/admin/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ user_id: id })
+      })
+      if (response.ok) {
+        fetchUsers()
+      }
+    } catch (err) {
+      console.error('Action failed:', err)
+    }
   }
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
+    // Backend doesn't have a specific OCC delete yet, using suspend for now
+    // or we could add a DELETE endpoint. 
+    // To preserve UI functionality:
     setUsers(prev => prev.filter(u => u.id !== id))
     setConfirmDelete(null)
-    if (selectedUser?.id === id) setSelectedUser(null)
   }
 
   const handleCreate = () => {
@@ -262,11 +329,12 @@ export default function CRMPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sorted.length === 0 && (
+              {isLoading ? (
+                <tr><td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">Loading users...</td></tr>
+              ) : sorted.length === 0 ? (
                 <tr><td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">No users found.</td></tr>
-              )}
-              {sorted.map(user => {
-                const TypeIcon = TYPE_ICONS[user.type]
+              ) : sorted.map(user => {
+                const TypeIcon = TYPE_ICONS[user.type] || User
                 return (
                   <tr key={user.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-5 py-4">
@@ -306,7 +374,7 @@ export default function CRMPage() {
                           <Eye className="h-3.5 w-3.5" /> View
                         </Button>
                         <Button size="sm" variant="outline" className={`h-8 gap-1.5 ${user.status === 'blocked' ? 'text-green-500 border-green-500/30' : 'text-yellow-500 border-yellow-500/30'}`}
-                          onClick={() => toggleBlock(user.id)}>
+                          onClick={() => toggleBlock(user.id, user.status)}>
                           {user.status === 'blocked' ? <><Unlock className="h-3.5 w-3.5" /> Unblock</> : <><Lock className="h-3.5 w-3.5" /> Block</>}
                         </Button>
                         <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10"
@@ -358,7 +426,7 @@ export default function CRMPage() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
                   <div className="h-14 w-14 rounded-full bg-primary/15 flex items-center justify-center">
-                    {(() => { const Icon = TYPE_ICONS[selectedUser.type]; return <Icon className="h-7 w-7 text-primary" /> })()}
+                    {(() => { const Icon = TYPE_ICONS[selectedUser.type] || User; return <Icon className="h-7 w-7 text-primary" /> })()}
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-foreground">{selectedUser.name}</h2>
@@ -426,7 +494,7 @@ export default function CRMPage() {
               {/* Actions */}
               <div className="space-y-2 pt-2">
                 <Button className={`w-full gap-2 ${selectedUser.status === 'blocked' ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'} text-white`}
-                  onClick={() => { toggleBlock(selectedUser.id); setSelectedUser(u => u ? { ...u, status: u.status === 'blocked' ? 'active' : 'blocked' } : null) }}>
+                  onClick={() => { toggleBlock(selectedUser.id, selectedUser.status); setSelectedUser(u => u ? { ...u, status: u.status === 'blocked' ? 'active' : 'blocked' } : null) }}>
                   {selectedUser.status === 'blocked' ? <><Unlock className="h-4 w-4" /> Unblock User</> : <><Lock className="h-4 w-4" /> Block User</>}
                 </Button>
                 <Button variant="outline" className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"

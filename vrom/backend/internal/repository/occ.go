@@ -17,12 +17,12 @@ func GetLiveFinancials(db *sql.DB) (models.OCCFinancials, error) {
 	err := db.QueryRow(`
 		SELECT 
 			-- Overall GMV (Orders + Trips)
-			COALESCE((SELECT SUM(total_amount) FROM orders WHERE status NOT IN ('cancelled', 'rejected')) + 
-			         (SELECT SUM(actual_fare) FROM trips WHERE status NOT IN ('cancelled', 'rejected')), 0) AS gmv,
+			COALESCE((SELECT SUM(total_amount) FROM orders WHERE status NOT IN ('cancelled', 'rejected')), 0) + 
+			COALESCE((SELECT SUM(actual_fare) FROM trips WHERE status NOT IN ('cancelled', 'rejected')), 0) AS gmv,
 			
 			-- Commission (Vrom Earnings = 10% orders + 20% trips)
-			COALESCE((SELECT SUM(total_amount * 0.10) FROM orders WHERE status NOT IN ('cancelled', 'rejected')) + 
-			         (SELECT SUM(actual_fare * 0.20) FROM trips WHERE status NOT IN ('cancelled', 'rejected')), 0) AS commission,
+			COALESCE((SELECT SUM(total_amount * 0.10) FROM orders WHERE status NOT IN ('cancelled', 'rejected')), 0) + 
+			COALESCE((SELECT SUM(actual_fare * 0.20) FROM trips WHERE status NOT IN ('cancelled', 'rejected')), 0) AS commission,
 			
 			-- Wallet & Escrow
 			COALESCE((SELECT SUM(locked_funds) FROM wallets), 0) AS escrow_in_flight,
@@ -49,7 +49,7 @@ func GetRevenueBreakdown(db *sql.DB) (models.RevenueBreakdown, error) {
 			COALESCE(SUM(CASE WHEN created_at >= NOW() - INTERVAL '24 hours' THEN total_amount * 0.10 ELSE 0 END), 0) AS daily,
 			COALESCE(SUM(CASE WHEN created_at >= NOW() - INTERVAL '7 days'   THEN total_amount * 0.10 ELSE 0 END), 0) AS weekly,
 			COALESCE(SUM(CASE WHEN created_at >= NOW() - INTERVAL '30 days'  THEN total_amount * 0.10 ELSE 0 END), 0) AS monthly
-		FROM orders WHERE status NOT IN ('cancelled')
+		FROM orders
 	`).Scan(&r.Daily, &r.Weekly, &r.Monthly)
 	return r, err
 }
@@ -86,7 +86,9 @@ func GetEscrowOrders(db *sql.DB) ([]models.EscrowEntry, error) {
 func SearchUsers(db *sql.DB, query, role string) ([]models.AdminUserView, error) {
 	q := `
 		SELECT u.user_id, u.full_name, u.email, u.phone_number, u.role, 
-		       u.is_verified, u.created_at, COALESCE(w.balance, 0)
+		       u.is_verified, u.created_at, COALESCE(w.balance, 0),
+		       (SELECT COUNT(*) FROM orders WHERE buyer_id = u.user_id) as orders_count,
+		       (SELECT COUNT(*) FROM trips WHERE buyer_id = u.user_id) as trips_count
 		FROM users u
 		LEFT JOIN wallets w ON u.user_id = w.user_id
 		WHERE (u.full_name ILIKE $1 OR u.email ILIKE $1 OR u.phone_number ILIKE $1)
@@ -103,11 +105,11 @@ func SearchUsers(db *sql.DB, query, role string) ([]models.AdminUserView, error)
 		return nil, err
 	}
 	defer rows.Close()
-	var users []models.AdminUserView
+	users := []models.AdminUserView{}
 	for rows.Next() {
 		var u models.AdminUserView
 		if err := rows.Scan(&u.UserID, &u.FullName, &u.Email, &u.PhoneNumber, &u.Role,
-			&u.IsVerified, &u.CreatedAt, &u.Balance); err != nil {
+			&u.IsVerified, &u.CreatedAt, &u.Balance, &u.OrdersCount, &u.TripsCount); err != nil {
 			continue
 		}
 		users = append(users, u)
@@ -256,7 +258,7 @@ func GetAuditLog(db *sql.DB, page, limit int) ([]models.AuditEntry, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []models.AuditEntry
+	entries := []models.AuditEntry{}
 	for rows.Next() {
 		var e models.AuditEntry
 		rows.Scan(&e.LogID, &e.AdminEmail, &e.Action, &e.TargetID, &e.IPAddress, &e.CreatedAt)
@@ -282,7 +284,7 @@ func GetFlaggedContent(db *sql.DB) ([]models.FlaggedProduct, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var products []models.FlaggedProduct
+	products := []models.FlaggedProduct{}
 	for rows.Next() {
 		var fp models.FlaggedProduct
 		rows.Scan(&fp.ProductID, &fp.Title, &fp.ImageURL, &fp.Price, &fp.SellerName, &fp.FlaggedAt)
@@ -323,11 +325,76 @@ func GetRiderLeaderboard(db *sql.DB) ([]models.RiderLeaderboardEntry, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var leaders []models.RiderLeaderboardEntry
+	leaders := []models.RiderLeaderboardEntry{}
 	for rows.Next() {
 		var e models.RiderLeaderboardEntry
 		rows.Scan(&e.UserID, &e.FullName, &e.TripCount, &e.TotalEarnings, &e.AvgRating)
 		leaders = append(leaders, e)
 	}
 	return leaders, nil
+}
+
+// ───────────────────────────────────────────────
+// SECURITY ALERTS
+// ───────────────────────────────────────────────
+
+func GetSecurityAlerts(db *sql.DB, status string) ([]models.OCCSecurityAlert, error) {
+	rows, err := db.Query(`
+		SELECT alert_id, type, severity, message, status, region, created_at, COALESCE(resolved_at::text, '')
+		FROM occ_security_alerts
+		WHERE status = $1
+		ORDER BY created_at DESC
+		LIMIT 50`, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	alerts := []models.OCCSecurityAlert{}
+	for rows.Next() {
+		var a models.OCCSecurityAlert
+		rows.Scan(&a.AlertID, &a.Type, &a.Severity, &a.Message, &a.Status, &a.Region, &a.CreatedAt, &a.ResolvedAt)
+		alerts = append(alerts, a)
+	}
+	return alerts, nil
+}
+
+func UpdateSecurityAlert(db *sql.DB, alertID string, status string) error {
+	var query string
+	if status == "resolved" {
+		query = "UPDATE occ_security_alerts SET status = $1, resolved_at = NOW() WHERE alert_id = $2"
+	} else {
+		query = "UPDATE occ_security_alerts SET status = $1 WHERE alert_id = $2"
+	}
+	_, err := db.Exec(query, status, alertID)
+	return err
+}
+
+// ───────────────────────────────────────────────
+// LIVE FLEET (MAP)
+// ───────────────────────────────────────────────
+
+func GetAllActiveTrips(db *sql.DB) ([]models.TripSummary, error) {
+	rows, err := db.Query(`
+		SELECT trip_id::text, status, actual_fare, created_at,
+		       pickup_address, dropoff_address,
+		       ST_Y(pickup_location::geometry) as p_lat, ST_X(pickup_location::geometry) as p_lng,
+		       ST_Y(dropoff_location::geometry) as d_lat, ST_X(dropoff_location::geometry) as d_lng
+		FROM trips 
+		WHERE status IN ('pending', 'accepted', 'picked_up')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	trips := []models.TripSummary{}
+	for rows.Next() {
+		var t models.TripSummary
+		// We use anonymous fields if TripSummary doesn't have lat/lng or update models
+		// For now, let's keep it simple or update models if needed.
+		// Actually, I'll update models.go first to include Lat/Lng in TripSummary.
+		rows.Scan(&t.TripID, &t.Status, &t.Fare, &t.CreatedAt, &t.PickupAddress, &t.DropoffAddress, &t.PLat, &t.PLng, &t.DLat, &t.DLng)
+		trips = append(trips, t)
+	}
+	return trips, nil
 }

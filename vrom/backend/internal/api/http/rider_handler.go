@@ -1,11 +1,13 @@
 package http
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"vrom-backend/internal/api/websocket"
 	"vrom-backend/internal/models"
 	"vrom-backend/internal/repository"
 )
@@ -135,6 +137,15 @@ func HandleRiderDecision(db *sql.DB) http.HandlerFunc {
 			}
 
 			tx.Commit()
+
+			// Notify OCC (Live Map) via WebSockets
+			if websocket.GlobalHub != nil {
+				go func() {
+					fleet, _ := repository.GetAllActiveTrips(db)
+					websocket.GlobalHub.BroadcastToTopic(context.Background(), "fleet", fleet)
+				}()
+			}
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "message": "Ride accepted! Navigate to pickup."})
 		}
@@ -154,6 +165,15 @@ func HandleStartTrip(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Cannot start trip: "+err.Error(), http.StatusConflict)
 			return
 		}
+
+		// Notify OCC (Live Map) via WebSockets
+		if websocket.GlobalHub != nil {
+			go func() {
+				fleet, _ := repository.GetAllActiveTrips(db)
+				websocket.GlobalHub.BroadcastToTopic(context.Background(), "fleet", fleet)
+			}()
+		}
+
 		json.NewEncoder(w).Encode(map[string]string{"status": "in_progress", "message": "Trip started! Drive safely."})
 	}
 }
@@ -174,6 +194,18 @@ func HandleCompleteTrip(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Completion failed: "+err.Error(), http.StatusForbidden)
 			return
 		}
+
+		// Notify OCC (Live Map) via WebSockets (Remove completed trip from map)
+		if websocket.GlobalHub != nil {
+			go func() {
+				fleet, _ := repository.GetAllActiveTrips(db)
+				websocket.GlobalHub.BroadcastToTopic(context.Background(), "fleet", fleet)
+				// Also refresh financials
+				financials, _ := repository.GetLiveFinancials(db)
+				websocket.GlobalHub.BroadcastToTopic(context.Background(), "analytics", financials)
+			}()
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "Success",

@@ -72,6 +72,9 @@ func main() {
 	mux.HandleFunc("/ws/rider", func(w http.ResponseWriter, r *http.Request) {
 		websocket.ServeWs(wsHub, w, r)
 	})
+	mux.HandleFunc("/ws/occ", middleware.AdminOnly(db, func(w http.ResponseWriter, r *http.Request) {
+		websocket.ServeWs(wsHub, w, r)
+	}))
 
 	// --- 1. AUTH & USER HANDLERS ---
 	mux.HandleFunc("/register", vrom_http.HandleRegister(db))
@@ -82,9 +85,9 @@ func main() {
 	mux.HandleFunc("/verify-otp", vrom_http.HandleVerifyOTP(db))
 	mux.HandleFunc("/request-password-reset", vrom_http.HandleRequestPasswordReset(db))
 	mux.HandleFunc("/reset-password", vrom_http.HandleResetPassword(db))
-	mux.HandleFunc("/profile", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleProfile(db)))
-	mux.HandleFunc("/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleUpdateProfile(db)))
-	mux.HandleFunc("/profile/statement", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleGetStatement(db)))
+	mux.HandleFunc("/profile", middleware.RequireRole(db, []string{"customer", "seller", "rider", "admin"}, vrom_http.HandleProfile(db)))
+	mux.HandleFunc("/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider", "admin"}, vrom_http.HandleUpdateProfile(db)))
+	mux.HandleFunc("/profile/statement", middleware.RequireRole(db, []string{"customer", "seller", "rider", "admin"}, vrom_http.HandleGetStatement(db)))
 
 	mux.HandleFunc("/delete-account", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
 	mux.HandleFunc("/ride/delete-account", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeleteAccount(db)))
@@ -167,6 +170,10 @@ func main() {
 	mux.HandleFunc("/occ/admin/unsuspend", middleware.AdminOnly(db, vrom_http.HandleOCCUnsuspendUser(db)))
 	mux.HandleFunc("/occ/admin/maintenance", middleware.AdminOnly(db, vrom_http.HandleOCCToggleMaintenance(db)))
 	mux.HandleFunc("/occ/admin/maintenance/status", middleware.AdminOnly(db, vrom_http.HandleOCCGetMaintenanceStatus()))
+	// Security Alerts
+	mux.HandleFunc("/occ/security/alerts", middleware.AdminOnly(db, vrom_http.HandleOCCGetSecurityAlerts(db)))
+	mux.HandleFunc("/occ/security/resolve", middleware.AdminOnly(db, vrom_http.HandleOCCResolveAlert(db)))
+	mux.HandleFunc("/occ/fleet/live", middleware.AdminOnly(db, vrom_http.HandleOCCGetLiveFleet(db)))
 	// Disputes
 	mux.HandleFunc("/occ/disputes", middleware.AdminOnly(db, vrom_http.HandleOCCGetDisputes(db)))
 	mux.HandleFunc("/occ/disputes/resolve", middleware.AdminOnly(db, vrom_http.HandleOCCResolveDispute(db)))
@@ -182,6 +189,22 @@ func main() {
 	fs := http.FileServer(http.Dir("./public"))
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", fs))
 
+	// CORS Middleware
+	corsMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3001")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Origin, Accept")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
 	// Senior Logger Middleware
 	loggingMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -191,5 +214,5 @@ func main() {
 	}
 
 	fmt.Println("🚀 Vrom Modular Engine running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", loggingMiddleware(mux)))
+	log.Fatal(http.ListenAndServe(":8080", loggingMiddleware(corsMiddleware(mux))))
 }

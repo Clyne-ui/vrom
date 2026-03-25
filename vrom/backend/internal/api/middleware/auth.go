@@ -3,6 +3,7 @@ package middleware
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"vrom-backend/internal/services"
@@ -80,14 +81,28 @@ func RequireRole(db *sql.DB, allowedRoles []string, next http.HandlerFunc) http.
 func AdminOnly(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString := ""
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+			log.Printf("AdminOnly: Found Bearer token in header")
+		} else {
+			tokenString = r.URL.Query().Get("token")
+			log.Printf("AdminOnly: No header, checking query token (len=%d)", len(tokenString))
+		}
+
+		if (tokenString == "" || tokenString == "undefined") {
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
 			return
 		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := services.ValidateToken(tokenString)
-		if err != nil || claims.Role != "admin" {
+		if err != nil {
+			log.Printf("AdminOnly: Token validation failed: %v", err)
+			http.Error(w, "Access Denied: Invalid session", http.StatusForbidden)
+			return
+		}
+
+		if claims.Role != "admin" && claims.Role != "super_admin" {
+			log.Printf("AdminOnly: Role mismatch. User=%s Role=%s", claims.Email, claims.Role)
 			http.Error(w, "Access Denied: You do not have administrator privileges", http.StatusForbidden)
 			return
 		}
