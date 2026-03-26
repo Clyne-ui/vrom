@@ -87,6 +87,23 @@ func ValidateToken(tokenString string) (*UserClaims, error) {
 	return nil, errors.New("invalid token")
 }
 
+// ValidateRefreshToken parses the standard (non-user) refresh token.
+func ValidateRefreshToken(tokenString string) (*jwt.RegisteredClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return jwtSecret, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && token.Valid {
+		return claims, nil
+	}
+	return nil, errors.New("invalid refresh token")
+}
+
 // RevokeToken adds a token to the Redis blacklist until it expires
 func RevokeToken(tokenString string) error {
 	if redisClient == nil {

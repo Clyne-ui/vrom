@@ -230,5 +230,39 @@ type OCCSecurityAlert struct {
 
 type LiveFleetResponse struct {
 	ActiveTrips []TripSummary `json:"active_trips"`
-	Hotspots    []interface{}  `json:"hotspots"` // Potential future expansion
+	Hotspots    []interface{}  `json:"hotspots"` 
+}
+
+// SystemHealthDetail holds advanced metrics for a specific service.
+type SystemHealthDetail struct {
+	ServiceName string  `json:"service_name"`
+	Status      string  `json:"status"` // online, offline, degraded
+	LatencyMS   int64   `json:"latency_ms"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	MemUsage    float64 `json:"mem_usage"`
+	Uptime      string  `json:"uptime"`
+	LastCheck   string  `json:"last_check"`
+	Logs        []string `json:"logs"`
+}
+
+// Region represents a dynamic geographical management zone.
+type Region struct {
+	ID        string  `json:"id" gorm:"primaryKey"`
+	Name      string  `json:"name"`
+	Country   string  `json:"country"`
+	Currency  string  `json:"currency"`
+	Lat       float64 `json:"lat"`
+	Lng       float64 `json:"lng"`
+	Status    string  `json:"status"`
+	CreatedAt string  `json:"created_at"`
+}
+
+// SystemNotification represents a platform-wide alert.
+type SystemNotification struct {
+	ID        string `json:"id" gorm:"primaryKey"`
+	Type      string `json:"type"` // info, warning, error
+	Title     string `json:"title"`
+	Message   string `json:"message"`
+	Read      bool   `json:"read"`
+	CreatedAt string `json:"created_at"`
 }

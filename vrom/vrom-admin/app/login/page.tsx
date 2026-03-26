@@ -42,20 +42,22 @@ export default function LoginPage() {
       
       const data = await res.json()
       if (res.ok && data.access_token) {
+        const assignedRegion = data.user.role === 'admin' ? 'global' : (data.user.assigned_region || demoUser.region)
         const user = {
           id: data.user.user_id,
           email: data.user.email,
           name: data.user.full_name,
           role: data.user.role === 'admin' ? 'super_admin' : 'regional_admin',
-          region: demoUser.region,
+          region: assignedRegion,
           regions: data.user.role === 'admin' 
             ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania'] 
-            : [demoUser.region],
+            : [assignedRegion],
           loginTime: new Date().toISOString()
         }
         
         localStorage.setItem('vrom_session_token', data.access_token)
-        setUser(user)
+        if (data.refresh_token) localStorage.setItem('vrom_refresh_token', data.refresh_token)
+        setUser(user, data.access_token, data.refresh_token)
         router.push('/dashboard')
       } else {
         setError(data.message || 'Quick login failed')
@@ -82,22 +84,22 @@ export default function LoginPage() {
       const data = await res.json()
       
       if (res.ok && data.access_token) {
+        const assignedRegion = data.user.role === 'admin' ? 'global' : (data.user.assigned_region || selectedRegion)
         const user = {
           id: data.user.user_id,
           email: data.user.email,
           name: data.user.full_name,
           role: data.user.role === 'admin' ? 'super_admin' : 'regional_admin',
-          region: selectedRegion,
+          region: assignedRegion,
           regions: data.user.role === 'admin'
             ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania']
-            : [selectedRegion],
+            : [assignedRegion],
           loginTime: new Date().toISOString()
         }
         
         localStorage.setItem('vrom_session_token', data.access_token)
-        setUser(user)
-        
-        // Redirect to dashboard
+        if (data.refresh_token) localStorage.setItem('vrom_refresh_token', data.refresh_token)
+        setUser(user, data.access_token, data.refresh_token)
         router.push('/dashboard')
       } else {
         setError(data.message || 'Invalid email or password')

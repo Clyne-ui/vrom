@@ -181,7 +181,11 @@ export default function CRMPage() {
       setCreateError('All fields are required.')
       return
     }
-    const prefixes: Record<UserType, string> = { customer: 'USR', seller: 'SLR', rider: 'RDR' }
+    const prefixes: Record<UserType, string> = {
+      customer: 'USR', seller: 'SLR', rider: 'RDR',
+      admin: '',
+      moderator: ''
+    }
     const u: VromUser = {
       id: `${prefixes[newUser.type]}${Date.now().toString().slice(-4)}`,
       name: newUser.name, email: newUser.email, phone: newUser.phone,

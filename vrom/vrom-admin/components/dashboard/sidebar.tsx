@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Map, Users, DollarSign, AlertTriangle,
   BarChart3, Settings, LogOut, Menu, X, Power, Globe,
@@ -35,16 +35,38 @@ const REGION_COLORS: Record<RegionCode, string> = {
 
 export function Sidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const { user, role, region, switchRegion } = useUser()
+  const { user, role, region, switchRegion, token } = useUser()
   const [isOpen, setIsOpen] = useState(false)
   const [maintenanceMode, setMaintenanceMode] = useState(false)
+
+  // ── Fetch dynamic regions ───────────────────────────────
+  const [dbRegions, setDbRegions] = useState<any[]>([])
+  useEffect(() => {
+    const fetchRegions = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/occ/regions`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setDbRegions(Array.isArray(data) ? data : [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch sidebar regions:', err)
+      }
+    }
+    if (token) fetchRegions()
+  }, [token])
 
   const menuItems = NAV_ITEMS.filter(item => item.roles.includes(role))
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href)
 
-  const regionInfo = REGIONS[region as RegionCode]
+  const currentDbRegion = dbRegions.find(r => r.id === region)
+  const fallbackRegionInfo = REGIONS[region as RegionCode]
+  
+  const displayName = currentDbRegion ? currentDbRegion.name : fallbackRegionInfo?.name
+  const displayCountry = currentDbRegion ? currentDbRegion.country : fallbackRegionInfo?.country
   const regionColorClass = REGION_COLORS[region as RegionCode] ?? REGION_COLORS.global
 
   const sidebarContent = (
@@ -76,10 +98,11 @@ export function Sidebar() {
             className="w-full px-2 py-1.5 bg-sidebar-accent text-sidebar-foreground rounded border border-sidebar-border text-xs"
           >
             <option value="global">🌍 Global Operations</option>
-            <option value="kenya">🇰🇪 Nairobi, Kenya</option>
-            <option value="nigeria">🇳🇬 Lagos, Nigeria</option>
-            <option value="uganda">🇺🇬 Kampala, Uganda</option>
-            <option value="tanzania">🇹🇿 Dar es Salaam, Tanzania</option>
+            {dbRegions.map(r => (
+              <option key={r.id} value={r.id}>
+                📍 {r.name}, {r.country}
+              </option>
+            ))}
           </select>
         </div>
       )}
@@ -92,8 +115,8 @@ export function Sidebar() {
           </p>
           <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded border text-xs ${regionColorClass}`}>
             <ShieldCheck className="h-3 w-3 flex-shrink-0" />
-            <span className="font-semibold">{regionInfo?.name}</span>
-            <span className="opacity-60">— {regionInfo?.country}</span>
+            <span className="font-semibold">{displayName}</span>
+            <span className="opacity-60">— {displayCountry}</span>
           </div>
         </div>
       )}
@@ -151,7 +174,7 @@ export function Sidebar() {
             <p className="text-[10px] text-sidebar-accent-foreground">Logged in as</p>
             <p className="text-xs font-bold text-sidebar-foreground truncate">{user.name}</p>
             <p className={`text-[10px] font-semibold mt-0.5 ${role === 'super_admin' ? 'text-primary' : 'text-green-400'}`}>
-              {role === 'super_admin' ? '⭐ Super Admin' : `🗺️ ${regionInfo?.name}`}
+              {role === 'super_admin' ? '⭐ Super Admin' : `🗺️ ${displayName || region}`}
             </p>
           </div>
         )}

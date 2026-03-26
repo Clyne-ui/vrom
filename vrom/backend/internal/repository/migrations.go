@@ -67,5 +67,32 @@ func InitDatabase(db *sql.DB) {
 			END IF;
 		END $$;`)
 
+	// 6. System Notifications Table
+	_, _ = db.Exec(`
+		CREATE TABLE IF NOT EXISTS system_notifications (
+			id TEXT PRIMARY KEY,
+			type TEXT NOT NULL,
+			title TEXT NOT NULL,
+			message TEXT NOT NULL,
+			read BOOLEAN DEFAULT FALSE,
+			created_at TEXT NOT NULL
+		)`)
+
+	// 7. Regions Table
+	_, _ = db.Exec(`
+		CREATE TABLE IF NOT EXISTS regions (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			country TEXT NOT NULL,
+			currency TEXT NOT NULL,
+			lat DOUBLE PRECISION NOT NULL,
+			lng DOUBLE PRECISION NOT NULL,
+			status TEXT DEFAULT 'active',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		)`)
+
+	// 8. Add assigned_region to Users for Regional Admins
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_region TEXT`)
+
 	fmt.Println("✅ AUTO-MIGRATIONS COMPLETE")
 }

@@ -214,3 +214,49 @@ func HandleResetPassword(db *sql.DB) http.HandlerFunc {
 		})
 	}
 }
+
+// HandleRefreshToken exchanges a valid refresh token for a new access token.
+// The frontend calls this silently every ~12 minutes to stay logged in.
+func HandleRefreshToken(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+			http.Error(w, "Invalid input: refresh_token required", http.StatusBadRequest)
+			return
+		}
+
+		// Parse the refresh token (it only has RegisteredClaims, no custom role/email)
+		claims, err := services.ValidateRefreshToken(req.RefreshToken)
+		if err != nil {
+			log.Printf("HandleRefreshToken: invalid refresh token: %v", err)
+			http.Error(w, "Refresh token expired or invalid. Please login again.", http.StatusUnauthorized)
+			return
+		}
+
+		userID := claims.Subject
+
+		// Re-fetch live user data to get current role/email (they might have changed)
+		var email, role string
+		err = db.QueryRow(
+			`SELECT email, role FROM users WHERE user_id = $1`, userID,
+		).Scan(&email, &role)
+		if err != nil {
+			http.Error(w, "User not found", http.StatusUnauthorized)
+			return
+		}
+
+		// Issue a brand-new access token
+		newAccess, _, err := services.GenerateTokens(userID, email, role)
+		if err != nil {
+			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"access_token": newAccess,
+		})
+	}
+}

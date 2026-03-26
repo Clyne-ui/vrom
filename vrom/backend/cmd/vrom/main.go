@@ -85,6 +85,7 @@ func main() {
 	mux.HandleFunc("/verify-otp", vrom_http.HandleVerifyOTP(db))
 	mux.HandleFunc("/request-password-reset", vrom_http.HandleRequestPasswordReset(db))
 	mux.HandleFunc("/reset-password", vrom_http.HandleResetPassword(db))
+	mux.HandleFunc("/auth/refresh", vrom_http.HandleRefreshToken(db))
 	mux.HandleFunc("/profile", middleware.RequireRole(db, []string{"customer", "seller", "rider", "admin"}, vrom_http.HandleProfile(db)))
 	mux.HandleFunc("/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider", "admin"}, vrom_http.HandleUpdateProfile(db)))
 	mux.HandleFunc("/profile/statement", middleware.RequireRole(db, []string{"customer", "seller", "rider", "admin"}, vrom_http.HandleGetStatement(db)))
@@ -160,8 +161,43 @@ func main() {
 	mux.HandleFunc("/occ/stream/financials", middleware.AdminOnly(db, vrom_http.HandleOCCFinancialStream(db)))
 	mux.HandleFunc("/occ/stream/health", middleware.AdminOnly(db, vrom_http.HandleOCCHealthStream()))
 	// Analytics
+	mux.HandleFunc("/occ/health/", middleware.AdminOnly(db, vrom_http.HandleGetServiceHealth(db)))
+	mux.HandleFunc("/occ/notifications", middleware.AdminOnly(db, vrom_http.HandleGetNotifications(db)))
+	mux.HandleFunc("/occ/notifications/read-all", middleware.AdminOnly(db, vrom_http.HandleMarkAllRead(db)))
+	mux.HandleFunc("/occ/notifications/clear", middleware.AdminOnly(db, vrom_http.HandleClearNotifications(db)))
+	mux.HandleFunc("/occ/notifications/", middleware.AdminOnly(db, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			vrom_http.HandleMarkNotificationRead(db)(w, r)
+		case http.MethodDelete:
+			vrom_http.HandleDeleteNotification(db)(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	// Analytics
 	mux.HandleFunc("/occ/analytics/financials", middleware.AdminOnly(db, vrom_http.HandleOCCGetFinancials(db)))
 	mux.HandleFunc("/occ/analytics/escrow", middleware.AdminOnly(db, vrom_http.HandleOCCGetEscrow(db)))
+	
+	// Regions & Admin Management
+	mux.HandleFunc("/occ/regions", middleware.AdminOnly(db, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			vrom_http.HandleGetRegions(db)(w, r)
+		case http.MethodPost:
+			vrom_http.HandleCreateRegion(db)(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	mux.HandleFunc("/occ/admins", middleware.AdminOnly(db, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			vrom_http.HandleCreateAdmin(db)(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+
 	// CRM
 	mux.HandleFunc("/occ/crm/search", middleware.AdminOnly(db, vrom_http.HandleOCCSearchUsers(db)))
 	mux.HandleFunc("/occ/crm/history", middleware.AdminOnly(db, vrom_http.HandleOCCGetUserHistory(db)))

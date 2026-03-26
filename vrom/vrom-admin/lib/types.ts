@@ -31,8 +31,9 @@ export interface UserContext {
   user: User | null
   region: RegionCode
   role: UserRole
+  token: string | null
   isLoading: boolean
-  setUser: (user: User) => void
+  setUser: (user: User, token?: string, refreshToken?: string) => void
   setRegion: (region: RegionCode) => void
   switchRegion: (region: RegionCode) => void
   canManageRegion: (region: RegionCode) => boolean

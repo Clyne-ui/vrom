@@ -97,7 +97,7 @@ func AdminOnly(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 		claims, err := services.ValidateToken(tokenString)
 		if err != nil {
 			log.Printf("AdminOnly: Token validation failed: %v", err)
-			http.Error(w, "Access Denied: Invalid session", http.StatusForbidden)
+			http.Error(w, "Authentication expired: Invalid session", http.StatusUnauthorized)
 			return
 		}
 

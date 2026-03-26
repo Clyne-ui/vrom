@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,45 +9,82 @@ import {
   Search, MapPin, Mail, User
 } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
-import { REGION_LIST } from '@/lib/regions'
-import { RegionCode, UserRole } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
 interface AdminAccount {
+  user_id: string
+  full_name: string
+  email: string
+  role: string
+  assigned_region: string
+  is_verified: boolean
+  created_at: string
+}
+
+interface DBRegion {
   id: string
   name: string
-  email: string
-  role: UserRole
-  region: RegionCode
-  status: 'active' | 'suspended'
-  createdAt: string
-  lastLogin: string
-}
-
-const DEMO_ADMINS: AdminAccount[] = [
-  { id: '1', name: 'Clyne Mwangi', email: 'clyne@vrom.io', role: 'regional_admin', region: 'kenya', status: 'active', createdAt: '2025-01-15', lastLogin: '2026-03-23' },
-  { id: '2', name: 'Emeka Okafor', email: 'emeka@vrom.io', role: 'regional_admin', region: 'nigeria', status: 'active', createdAt: '2025-02-01', lastLogin: '2026-03-22' },
-  { id: '3', name: 'Sarah Nakato', email: 'sarah@vrom.io', role: 'regional_admin', region: 'uganda', status: 'active', createdAt: '2025-03-10', lastLogin: '2026-03-21' },
-  { id: '4', name: 'James Mwanachuma', email: 'james@vrom.io', role: 'regional_admin', region: 'tanzania', status: 'suspended', createdAt: '2025-04-05', lastLogin: '2026-03-18' },
-]
-
-const REGION_FLAGS: Record<RegionCode, string> = {
-  kenya: '🇰🇪', nigeria: '🇳🇬', uganda: '🇺🇬', tanzania: '🇹🇿', global: '🌍',
-}
-
-const REGION_COLORS: Record<RegionCode, string> = {
-  kenya: 'bg-blue-500/20 text-blue-400',
-  nigeria: 'bg-purple-500/20 text-purple-400',
-  uganda: 'bg-green-500/20 text-green-400',
-  tanzania: 'bg-orange-500/20 text-orange-400',
-  global: 'bg-slate-500/20 text-slate-400',
+  country: string
 }
 
 export default function AdminManagementPage() {
-  const { role } = useUser()
+  const { role, token } = useUser()
   const router = useRouter()
+  const API_URL = process.env.NEXT_PUBLIC_API_URL
 
-  // Super admin guard
+  const [admins, setAdmins] = useState<AdminAccount[]>([])
+  const [regions, setRegions] = useState<DBRegion[]>([])
+  const [search, setSearch] = useState('')
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [loading, setLoading] = useState(false)
+  
+  const [newAdmin, setNewAdmin] = useState({
+    name: '', email: '', password: '', phone_number: '', region: ''
+  })
+  const [createError, setCreateError] = useState('')
+
+  const fetchAdmins = useCallback(async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_URL}/occ/crm/search?role=regional_admin`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAdmins(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch admins:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [API_URL, token])
+
+  const fetchRegions = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/occ/regions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const regs = Array.isArray(data) ? data : []
+        setRegions(regs)
+        if (regs.length > 0 && !newAdmin.region) {
+          setNewAdmin(p => ({ ...p, region: regs[0].id }))
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch regions:', err)
+    }
+  }, [API_URL, token, newAdmin.region])
+
+  useEffect(() => {
+    if (role === 'super_admin') {
+      fetchAdmins()
+      fetchRegions()
+    }
+  }, [role, fetchAdmins, fetchRegions])
+
   if (role !== 'super_admin') {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
@@ -61,49 +98,69 @@ export default function AdminManagementPage() {
     )
   }
 
-  const [admins, setAdmins] = useState<AdminAccount[]>(DEMO_ADMINS)
-  const [search, setSearch] = useState('')
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [newAdmin, setNewAdmin] = useState({
-    name: '', email: '', password: '', region: 'kenya' as RegionCode,
-  })
-  const [createError, setCreateError] = useState('')
-
   const filtered = admins.filter(a =>
-    a.name.toLowerCase().includes(search.toLowerCase()) ||
-    a.email.toLowerCase().includes(search.toLowerCase()) ||
-    a.region.toLowerCase().includes(search.toLowerCase())
+    a.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+    a.email?.toLowerCase().includes(search.toLowerCase()) ||
+    a.assigned_region?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     setCreateError('')
-    if (!newAdmin.name || !newAdmin.email || !newAdmin.password) {
+    if (!newAdmin.name || !newAdmin.email || !newAdmin.password || !newAdmin.region || !newAdmin.phone_number) {
       setCreateError('All fields are required.')
       return
     }
-    const admin: AdminAccount = {
-      id: Date.now().toString(),
-      name: newAdmin.name,
-      email: newAdmin.email,
-      role: 'regional_admin',
-      region: newAdmin.region,
-      status: 'active',
-      createdAt: new Date().toISOString().split('T')[0],
-      lastLogin: '—',
+
+    try {
+      const res = await fetch(`${API_URL}/occ/admins`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          full_name: newAdmin.name,
+          email: newAdmin.email,
+          phone_number: newAdmin.phone_number,
+          password: newAdmin.password,
+          role: 'regional_admin',
+          assigned_region: newAdmin.region
+        })
+      })
+
+      if (res.ok) {
+        await fetchAdmins()
+        setNewAdmin({ name: '', email: '', phone_number: '', password: '', region: regions[0]?.id || '' })
+        setShowCreateForm(false)
+      } else {
+        const errData = await res.text()
+        setCreateError(errData || 'Failed to create admin')
+      }
+    } catch (err) {
+      setCreateError('Network error occurred.')
     }
-    setAdmins(prev => [admin, ...prev])
-    setNewAdmin({ name: '', email: '', password: '', region: 'kenya' })
-    setShowCreateForm(false)
   }
 
-  const toggleStatus = (id: string) => {
-    setAdmins(prev => prev.map(a =>
-      a.id === id ? { ...a, status: a.status === 'active' ? 'suspended' : 'active' } : a
-    ))
-  }
+  const toggleStatus = async (id: string, currentlyVerified: boolean) => {
+    try {
+      const endpoint = currentlyVerified ? 'suspend' : 'unsuspend'
+      const res = await fetch(`${API_URL}/occ/admin/${endpoint}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ user_id: id })
+      })
 
-  const deleteAdmin = (id: string) => {
-    setAdmins(prev => prev.filter(a => a.id !== id))
+      if (res.ok) {
+        setAdmins(prev => prev.map(a =>
+          a.user_id === id ? { ...a, is_verified: !currentlyVerified } : a
+        ))
+      }
+    } catch (err) {
+      console.error('Failed to toggle status', err)
+    }
   }
 
   return (
@@ -149,6 +206,15 @@ export default function AdminManagementPage() {
               />
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Phone Number</label>
+              <Input
+                type="text"
+                placeholder="e.g. +254700000000"
+                value={newAdmin.phone_number}
+                onChange={e => setNewAdmin(p => ({ ...p, phone_number: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Temporary Password</label>
               <Input
                 type="password"
@@ -157,18 +223,19 @@ export default function AdminManagementPage() {
                 onChange={e => setNewAdmin(p => ({ ...p, password: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium text-foreground">Assign Region</label>
               <select
                 value={newAdmin.region}
-                onChange={e => setNewAdmin(p => ({ ...p, region: e.target.value as RegionCode }))}
+                onChange={e => setNewAdmin(p => ({ ...p, region: e.target.value }))}
                 className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground text-sm"
               >
-                {REGION_LIST.map(r => (
-                  <option key={r.code} value={r.code}>
-                    {REGION_FLAGS[r.code]} {r.name}, {r.country}
+                {regions.map(r => (
+                  <option key={r.id} value={r.id}>
+                    🌍 {r.name}, {r.country}
                   </option>
                 ))}
+                {regions.length === 0 && <option disabled>No regions available. Create one first.</option>}
               </select>
             </div>
           </div>
@@ -176,7 +243,7 @@ export default function AdminManagementPage() {
             <p className="text-sm text-destructive mt-3">{createError}</p>
           )}
           <div className="flex gap-3 mt-5">
-            <Button onClick={handleCreate} className="gap-2">
+            <Button onClick={handleCreate} className="gap-2" disabled={regions.length === 0}>
               <ShieldCheck className="h-4 w-4" /> Create Admin Account
             </Button>
             <Button variant="outline" onClick={() => setShowCreateForm(false)}>Cancel</Button>
@@ -191,9 +258,9 @@ export default function AdminManagementPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Admins', value: admins.length, icon: UserCog, color: 'text-primary' },
-          { label: 'Active', value: admins.filter(a => a.status === 'active').length, icon: Globe, color: 'text-green-500' },
-          { label: 'Suspended', value: admins.filter(a => a.status === 'suspended').length, icon: Lock, color: 'text-red-500' },
-          { label: 'Regions Covered', value: new Set(admins.map(a => a.region)).size, icon: MapPin, color: 'text-orange-500' },
+          { label: 'Active', value: admins.filter(a => a.is_verified).length, icon: Globe, color: 'text-green-500' },
+          { label: 'Suspended', value: admins.filter(a => !a.is_verified).length, icon: Lock, color: 'text-red-500' },
+          { label: 'Regions Covered', value: new Set(admins.map(a => a.assigned_region)).size, icon: MapPin, color: 'text-orange-500' },
         ].map(stat => {
           const Icon = stat.icon
           return (
@@ -230,78 +297,82 @@ export default function AdminManagementPage() {
                 <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Admin</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Assigned Region</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Last Login</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Created At</th>
                 <th className="text-right px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.length === 0 && (
+              {loading && (
+                 <tr>
+                 <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground animate-pulse">
+                   Loading admins...
+                 </td>
+               </tr>
+              )}
+              {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                     No admins found.
                   </td>
                 </tr>
               )}
-              {filtered.map(admin => (
-                <tr key={admin.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">
-                        <User className="h-4 w-4 text-primary" />
+              {!loading && filtered.map(admin => {
+                const regionMatches = regions.find(r => r.id === admin.assigned_region)
+                const regionName = regionMatches ? `${regionMatches.name}, ${regionMatches.country}` : (admin.assigned_region || 'Unassigned')
+                return (
+                  <tr key={admin.user_id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">
+                          <User className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground text-sm">{admin.full_name}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {admin.email}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-foreground text-sm">{admin.name}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Mail className="h-3 w-3" /> {admin.email}
-                        </p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400">
+                        🌍 {regionName}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        admin.is_verified
+                          ? 'bg-green-500/10 text-green-500'
+                          : 'bg-red-500/10 text-red-500'
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${admin.is_verified ? 'bg-green-500' : 'bg-red-500'}`} />
+                        {admin.is_verified ? 'Active' : 'Suspended'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(admin.created_at).toLocaleDateString()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 h-8"
+                          onClick={() => toggleStatus(admin.user_id, admin.is_verified)}
+                          title={admin.is_verified ? 'Suspend' : 'Reinstate'}
+                        >
+                          {admin.is_verified
+                            ? <><Lock className="h-3.5 w-3.5" /> Suspend</>
+                            : <><Unlock className="h-3.5 w-3.5" /> Reinstate</>
+                          }
+                        </Button>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${REGION_COLORS[admin.region]}`}>
-                      {REGION_FLAGS[admin.region]} {admin.region.charAt(0).toUpperCase() + admin.region.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      admin.status === 'active'
-                        ? 'bg-green-500/10 text-green-500'
-                        : 'bg-red-500/10 text-red-500'
-                    }`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${admin.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      {admin.status === 'active' ? 'Active' : 'Suspended'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-muted-foreground">{admin.lastLogin}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 h-8"
-                        onClick={() => toggleStatus(admin.id)}
-                        title={admin.status === 'active' ? 'Suspend' : 'Reinstate'}
-                      >
-                        {admin.status === 'active'
-                          ? <><Lock className="h-3.5 w-3.5" /> Suspend</>
-                          : <><Unlock className="h-3.5 w-3.5" /> Reinstate</>
-                        }
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-destructive hover:bg-destructive/10 border-destructive/30"
-                        onClick={() => deleteAdmin(admin.id)}
-                        title="Remove admin"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

@@ -1,109 +1,131 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useUser } from '@/lib/contexts/user-context'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MapPin, TrendingUp, Users, ShoppingBag, Globe, Lock, Zap } from 'lucide-react'
-import { REGION_LIST } from '@/lib/regions'
+import { MapPin, TrendingUp, Users, ShoppingBag, Globe, Lock } from 'lucide-react'
+import { useLoadScript, Autocomplete } from '@react-google-maps/api'
 import { RegionCard, ExtendedRegion } from '@/components/dashboard/regions/region-card'
 import { ManagementHubDrawer, RegionUser } from '@/components/dashboard/regions/management-hub-drawer'
 import { useOCCWebSocket } from '@/lib/hooks/use-occ-websocket'
 
-const DEMO_REGION_USERS: Record<string, RegionUser[]> = {
-  kenya: [
-    { id: 'ADM01', name: 'Clyne Mwangi', role: 'admin', status: 'active' },
-    { id: 'RDR01', name: 'James Kamau', role: 'rider', status: 'pending_approval', documents: [{ type: 'Driver License', url: '#', approved: null }, { type: 'Vehicle Insurance', url: '#', approved: null }] },
-    { id: 'USR01', name: 'Alice Wanjiku', role: 'customer', status: 'active' },
-  ],
-  nigeria: [
-    { id: 'ADM02', name: 'Emeka Okafor', role: 'admin', status: 'active' },
-    { id: 'RDR02', name: 'Chinedu Eze', role: 'rider', status: 'active' },
-  ],
-  uganda: [
-    { id: 'ADM03', name: 'Sarah Nakato', role: 'admin', status: 'active' },
-  ]
+interface DBRegion {
+  id: string
+  name: string
+  country: string
+  currency: string
+  lat: number
+  lng: number
+  status: string
+  created_at: string
 }
 
-export default function RegionsPage() {
-  const { role } = useUser()
-  const router = useRouter()
+const libraries: "places"[] = ["places"]
 
-  const [regions, setRegions] = useState<ExtendedRegion[]>(
-    REGION_LIST.map(r => ({ ...r, status: 'active', hasIssue: r.code === 'nigeria' }))
-  )
+export default function RegionsPage() {
+  const { role, token } = useUser()
+  const router = useRouter()
+  const API_URL = process.env.NEXT_PUBLIC_API_URL
+
+  // Google Maps Load
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || '',
+    libraries,
+  })
+
+  const [regions, setRegions] = useState<ExtendedRegion[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newRegion, setNewRegion] = useState({ name: '', country: '', currency: '', timezone: '' })
+  const [loading, setLoading] = useState(false)
+
+  // Autocomplete instance & state
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null)
+  const [newRegion, setNewRegion] = useState({ name: '', country: '', currency: 'USD', lat: 0, lng: 0 })
 
   const [managingRegion, setManagingRegion] = useState<string | null>(null)
   const [regionUsers, setRegionUsers] = useState<Record<string, RegionUser[]>>({})
-  const [isFetchingUsers, setIsFetchingUsers] = useState(false)
   const [liveStats, setLiveStats] = useState<any>(null)
 
-  // 🔌 Real-time WebSocket Data
   const { data: wsData } = useOCCWebSocket('analytics')
 
   useEffect(() => {
-    if (wsData) {
-      setLiveStats(wsData)
-    }
+    if (wsData) setLiveStats(wsData)
   }, [wsData])
 
+  const fetchRegions = useCallback(async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_URL}/occ/regions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data: DBRegion[] = await res.json()
+        setRegions(data.map(r => ({
+          code: r.id,
+          name: r.name,
+          country: r.country,
+          currency: r.currency,
+          timezone: 'UTC', // Simplified
+          status: (r.status || 'active') as 'active' | 'blocked',
+          hasIssue: false,
+          drivers: 0, riders: 0, merchants: 0, activeOrders: 0, gmv: 0
+        })))
+      }
+    } catch (err) {
+      console.error('Failed to fetch regions', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [API_URL, token])
+
+  useEffect(() => { fetchRegions() }, [fetchRegions])
+
+  // --- Global Stats ---
   useEffect(() => {
     const fetchGlobal = async () => {
       try {
-        const token = localStorage.getItem('vrom_session_token')
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/analytics/financials`, {
+        const response = await fetch(`${API_URL}/occ/analytics/financials`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (response.ok) {
           const data = await response.json()
           setLiveStats(data.financials)
         }
-      } catch (err) {
-        console.error('Failed to fetch global stats:', err)
-      }
+      } catch (err) {}
     }
     fetchGlobal()
-  }, [])
+  }, [token, API_URL])
 
-  // Fetch users for the managing region
+  // --- Admin/User Fetch for Drawer ---
   useEffect(() => {
     if (!managingRegion) return
-
     const fetchRegionUsers = async () => {
-      setIsFetchingUsers(true)
       try {
-        const token = localStorage.getItem('vrom_session_token')
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/search?q=&role=`, {
+        const response = await fetch(`${API_URL}/occ/crm/search?q=&role=`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (response.ok) {
           const data = await response.json()
           const dataArray = Array.isArray(data) ? data : []
-          // Since backend doesn't filter by region yet, we'll map all users here for demo/dev
           setRegionUsers(prev => ({
             ...prev,
-            [managingRegion]: dataArray.map((u: any) => ({
-              id: u.user_id,
-              name: u.full_name,
-              role: u.role,
-              status: u.is_verified ? 'active' : 'blocked'
-            }))
+            [managingRegion]: dataArray
+              .filter((u: any) => u.assigned_region === managingRegion || managingRegion === u.assigned_region)
+              .map((u: any) => ({
+                id: u.user_id,
+                name: u.full_name,
+                role: u.role,
+                status: u.is_verified ? 'active' : 'blocked'
+              }))
           }))
         }
-      } catch (err) {
-        console.error('Failed to fetch region users:', err)
-      } finally {
-        setIsFetchingUsers(false)
-      }
+      } catch (err) {}
     }
-
     fetchRegionUsers()
-  }, [managingRegion])
+  }, [managingRegion, API_URL, token])
 
   if (role !== 'super_admin') {
     return (
@@ -116,28 +138,56 @@ export default function RegionsPage() {
     )
   }
 
-  const filteredRegions = regions.filter(r =>
-    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.country.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // --- Places Autocomplete Handlers ---
+  const onLoad = (autocompleteObj: google.maps.places.Autocomplete) => {
+    setAutocomplete(autocompleteObj)
+  }
 
-  const handleCreateRegion = () => {
-    if (!newRegion.name || !newRegion.country) return
-    const code = newRegion.name.toLowerCase().replace(/\s+/g, '-')
-    const created: ExtendedRegion = {
-      code,
-      name: newRegion.name,
-      country: newRegion.country,
-      currency: newRegion.currency || 'USD',
-      timezone: newRegion.timezone || 'UTC',
-      status: 'active',
-      drivers: 0, riders: 0, merchants: 0, activeOrders: 0, gmv: 0,
-      hasIssue: false
+  const onPlaceChanged = () => {
+    if (autocomplete !== null) {
+      const place = autocomplete.getPlace()
+      if (!place.geometry) return
+
+      let city = place.name || ''
+      let country = ''
+      
+      place.address_components?.forEach(comp => {
+        if (comp.types.includes('country')) {
+          country = comp.long_name
+        }
+      })
+
+      setNewRegion(prev => ({
+        ...prev,
+        name: city,
+        country: country || city,
+        lat: place.geometry?.location?.lat() || 0,
+        lng: place.geometry?.location?.lng() || 0
+      }))
     }
-    setRegions([...regions, created])
-    setRegionUsers({ ...regionUsers, [code]: [] })
-    setNewRegion({ name: '', country: '', currency: '', timezone: '' })
-    setShowAddForm(false)
+  }
+
+  const handleCreateRegion = async () => {
+    if (!newRegion.name || !newRegion.country) return
+    
+    try {
+      const res = await fetch(`${API_URL}/occ/regions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newRegion)
+      })
+
+      if (res.ok) {
+        await fetchRegions()
+        setShowAddForm(false)
+        setNewRegion({ name: '', country: '', currency: 'USD', lat: 0, lng: 0 })
+      }
+    } catch (err) {
+      console.error('Failed to create region', err)
+    }
   }
 
   const handleBlockRegion = (code: string) => {
@@ -149,44 +199,14 @@ export default function RegionsPage() {
     if (managingRegion === code) setManagingRegion(null)
   }
 
-  const handleUserAction = async (regionCode: string, userId: string, action: 'block' | 'delete' | 'approve_doc' | 'decline_doc') => {
-    try {
-      const token = localStorage.getItem('vrom_session_token')
-      
-      if (action === 'block') {
-        const isBlocked = regionUsers[regionCode]?.find(u => u.id === userId)?.status === 'blocked'
-        const endpoint = isBlocked ? 'unsuspend' : 'suspend'
-        
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/admin/${endpoint}`, {
-          method: 'POST',
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ user_id: userId })
-        })
-
-        if (res.ok) {
-          setRegionUsers(prev => ({
-            ...prev,
-            [regionCode]: prev[regionCode].map(u => 
-              u.id === userId ? { ...u, status: isBlocked ? 'active' : 'blocked' } as RegionUser : u
-            )
-          }))
-        }
-      }
-      // Handle other actions (delete, approve_doc) if backend has endpoints
-    } catch (err) {
-      console.error('Action failed:', err)
-    }
-  }
+  const filteredRegions = regions.filter(r =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.country.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   const stats = {
     totalRegions: regions.length,
     activeRegions: regions.filter(r => r.status === 'active').length,
-    totalDrivers: regions.reduce((sum, r) => sum + r.drivers, 0),
-    totalRiders: regions.reduce((sum, r) => sum + r.riders, 0),
-    totalGMV: regions.reduce((sum, r) => sum + r.gmv, 0),
   }
 
   return (
@@ -228,45 +248,68 @@ export default function RegionsPage() {
       {showAddForm && (
         <Card className="p-6 glass-dark bg-primary/5 border border-primary/30 animate-in fade-in slide-in-from-top-4">
           <h2 className="font-bold text-lg mb-4 flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" /> Setup New Region</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div><label className="text-sm font-medium text-foreground">City / Region Name</label><Input placeholder="e.g. Accra" value={newRegion.name} onChange={e => setNewRegion({ ...newRegion, name: e.target.value })} className="mt-1" /></div>
-            <div><label className="text-sm font-medium text-foreground">Country</label><Input placeholder="e.g. Ghana" value={newRegion.country} onChange={e => setNewRegion({ ...newRegion, country: e.target.value })} className="mt-1" /></div>
-            <div><label className="text-sm font-medium text-foreground">Currency</label><Input placeholder="e.g. GHS" value={newRegion.currency} onChange={e => setNewRegion({ ...newRegion, currency: e.target.value })} className="mt-1" /></div>
-            <div><label className="text-sm font-medium text-foreground">Timezone</label><Input placeholder="e.g. GMT" value={newRegion.timezone} onChange={e => setNewRegion({ ...newRegion, timezone: e.target.value })} className="mt-1" /></div>
-          </div>
+          
+          {isLoaded ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium text-foreground">Search City / Region</label>
+                <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged} options={{ types: ['(cities)'] }}>
+                  <Input 
+                    placeholder="Start typing a city name..." 
+                    className="mt-1"
+                    value={newRegion.name}
+                    onChange={(e) => setNewRegion(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </Autocomplete>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Country</label>
+                <Input placeholder="e.g. Kenya" value={newRegion.country} onChange={e => setNewRegion({ ...newRegion, country: e.target.value })} className="mt-1" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Currency</label>
+                <Input placeholder="e.g. GHS" value={newRegion.currency} onChange={e => setNewRegion({ ...newRegion, currency: e.target.value })} className="mt-1" />
+              </div>
+            </div>
+          ) : (
+             <div className="p-4 bg-muted animate-pulse rounded-md mb-4">Loading Google Maps Places API...</div>
+          )}
+
           <div className="flex gap-3">
-            <Button onClick={handleCreateRegion} className="bg-primary">Launch Region</Button>
+            <Button onClick={handleCreateRegion} className="bg-primary" disabled={!newRegion.name || !newRegion.country}>Launch Region</Button>
             <Button variant="outline" onClick={() => setShowAddForm(false)}>Cancel</Button>
           </div>
         </Card>
       )}
 
+      {/* ── Optional search field ── */}
       <div className="relative max-w-md">
         <Input placeholder="Search regions by name or country..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRegions.map((region) => (
-          <RegionCard
-            key={region.code}
-            region={region}
-            onManage={setManagingRegion}
-            onBlock={handleBlockRegion}
-            onDelete={handleDeleteRegion}
-          />
-        ))}
-      </div>
-
-      <Card className="p-6 glass-dark border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer" onClick={() => setShowAddForm(true)}>
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Globe className="h-5 w-5 text-primary" /> Ready to Expand to New Countries?
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Add new regions to scale Vrom's operations globally. Configure regional settings, assign admins, and monitor performance in real-time.
-          </p>
+      {loading ? (
+        <div className="animate-pulse space-y-4">
+          <div className="h-32 bg-muted rounded-xl"></div>
+          <div className="h-32 bg-muted rounded-xl"></div>
         </div>
-      </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredRegions.map((region) => (
+            <RegionCard
+              key={region.code}
+              region={region}
+              onManage={setManagingRegion}
+              onBlock={handleBlockRegion}
+              onDelete={handleDeleteRegion}
+            />
+          ))}
+          {filteredRegions.length === 0 && (
+            <div className="col-span-full p-12 text-center text-muted-foreground border-dashed border-2 rounded-xl">
+              No regions found. Create one to get started.
+            </div>
+          )}
+        </div>
+      )}
 
       <ManagementHubDrawer
         regionCode={managingRegion}
@@ -275,7 +318,7 @@ export default function RegionsPage() {
         users={regionUsers[managingRegion || ''] || []}
         onClose={() => setManagingRegion(null)}
         onResolveIssue={(code) => setRegions(prev => prev.map(r => r.code === code ? { ...r, hasIssue: false } : r))}
-        onUserAction={handleUserAction}
+        onUserAction={() => {}}
       />
     </div>
   )

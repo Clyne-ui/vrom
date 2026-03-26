@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Settings, Bell, Lock, Users, Globe, Shield, Save, Check, Plus, Trash2 } from 'lucide-react'
+import { Settings as SettingsIcon, Bell, Lock, Users, Globe, Shield, Save, Check, Plus, Trash2 } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
 import { REGIONS } from '@/lib/regions'
 import { UserRole, RegionCode } from '@/lib/types'
+import { useSearchParams } from 'next/navigation'
 
 type TabType = 'general' | 'users' | 'notifications' | 'security' | 'integrations'
 
@@ -23,7 +24,14 @@ interface DashboardUser {
 
 export default function SettingsPage() {
   const { user, role } = useUser()
-  const [activeTab, setActiveTab] = useState<TabType>('users')
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get('tab') as TabType) || 'users'
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab)
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as TabType
+    if (tab) setActiveTab(tab)
+  }, [searchParams])
   const [saved, setSaved] = useState(false)
   const [showAddUser, setShowAddUser] = useState(false)
   const [newUser, setNewUser] = useState({ name: '', email: '', role: 'regional_admin' as UserRole, region: 'kenya' as RegionCode })
@@ -97,7 +105,7 @@ export default function SettingsPage() {
 
   const tabs: { label: string; value: TabType; icon: any }[] = [
     { label: 'Users', value: 'users', icon: Users },
-    { label: 'General', value: 'general', icon: Settings },
+    { label: 'General', value: 'general', icon: SettingsIcon },
     { label: 'Notifications', value: 'notifications', icon: Bell },
     { label: 'Security', value: 'security', icon: Lock },
     { label: 'Integrations', value: 'integrations', icon: Globe },
