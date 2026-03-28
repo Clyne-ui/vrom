@@ -376,12 +376,16 @@ func UpdateSecurityAlert(db *sql.DB, alertID string, status string) error {
 
 func GetAllActiveTrips(db *sql.DB) ([]models.TripSummary, error) {
 	rows, err := db.Query(`
-		SELECT trip_id::text, status, actual_fare, created_at,
-		       pickup_address, dropoff_address,
-		       ST_Y(pickup_location::geometry) as p_lat, ST_X(pickup_location::geometry) as p_lng,
-		       ST_Y(dropoff_location::geometry) as d_lat, ST_X(dropoff_location::geometry) as d_lng
-		FROM trips 
-		WHERE status IN ('pending', 'accepted', 'picked_up')`)
+		SELECT t.trip_id::text, t.status, t.actual_fare, t.created_at,
+		       t.pickup_address, t.dropoff_address,
+		       ST_Y(t.pickup_location::geometry) as p_lat, ST_X(t.pickup_location::geometry) as p_lng,
+		       ST_Y(t.dropoff_location::geometry) as d_lat, ST_X(t.dropoff_location::geometry) as d_lng,
+		       b.full_name as rider_name, b.phone_number as rider_phone,
+		       s.full_name as driver_name, s.phone_number as driver_phone
+		FROM trips t
+		LEFT JOIN users b ON t.buyer_id = b.user_id
+		LEFT JOIN users s ON t.seller_id = s.user_id
+		WHERE t.status IN ('pending', 'accepted', 'picked_up')`)
 	if err != nil {
 		return nil, err
 	}
@@ -390,11 +394,16 @@ func GetAllActiveTrips(db *sql.DB) ([]models.TripSummary, error) {
 	trips := []models.TripSummary{}
 	for rows.Next() {
 		var t models.TripSummary
-		// We use anonymous fields if TripSummary doesn't have lat/lng or update models
-		// For now, let's keep it simple or update models if needed.
-		// Actually, I'll update models.go first to include Lat/Lng in TripSummary.
-		rows.Scan(&t.TripID, &t.Status, &t.Fare, &t.CreatedAt, &t.PickupAddress, &t.DropoffAddress, &t.PLat, &t.PLng, &t.DLat, &t.DLng)
-		trips = append(trips, t)
+		var rName, rPhone, dName, dPhone sql.NullString
+		
+		err = rows.Scan(&t.TripID, &t.Status, &t.Fare, &t.CreatedAt, &t.PickupAddress, &t.DropoffAddress, &t.PLat, &t.PLng, &t.DLat, &t.DLng, &rName, &rPhone, &dName, &dPhone)
+		if err == nil {
+			t.RiderName = rName.String
+			t.RiderPhone = rPhone.String
+			t.DriverName = dName.String
+			t.DriverPhone = dPhone.String
+			trips = append(trips, t)
+		}
 	}
 	return trips, nil
 }

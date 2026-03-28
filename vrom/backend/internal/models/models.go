@@ -165,6 +165,10 @@ type TripSummary struct {
 	PLng           float64 `json:"p_lng"`
 	DLat           float64 `json:"d_lat"`
 	DLng           float64 `json:"d_lng"`
+	DriverName     string  `json:"driver_name,omitempty"`
+	DriverPhone    string  `json:"driver_phone,omitempty"`
+	RiderName      string  `json:"rider_name,omitempty"`
+	RiderPhone     string  `json:"rider_phone,omitempty"`
 }
 
 type OrderSummary struct {
