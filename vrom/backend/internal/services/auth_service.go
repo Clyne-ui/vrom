@@ -28,13 +28,13 @@ type UserClaims struct {
 
 // GenerateTokens creates both an Access Token (15 mins) and a Refresh Token (7 days)
 func GenerateTokens(userID, email, role string) (string, string, error) {
-	// 1. Access Token
+	// 1. Access Token (24 Hours for a seamless experience like Uber/Grab)
 	accessClaims := &UserClaims{
 		UserID: userID,
 		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -44,9 +44,9 @@ func GenerateTokens(userID, email, role string) (string, string, error) {
 		return "", "", err
 	}
 
-	// 2. Refresh Token
+	// 2. Refresh Token (30 Days)
 	refreshClaims := &jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		Subject:   userID,
 	}

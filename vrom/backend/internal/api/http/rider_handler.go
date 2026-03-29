@@ -71,10 +71,11 @@ func HandleToggleStatus(db *sql.DB) http.HandlerFunc {
 
 		// Update is_available and current_location (PostGIS)
 		query := `UPDATE rider_profiles 
-		          SET is_available = $1, current_location = ST_SetSRID(ST_MakePoint($2, $3), 4326) 
-		          WHERE rider_id = (SELECT user_id FROM users WHERE email = $4)`
+		          SET is_available = $1, status = $2, last_lat = $3::numeric, last_lng = $4::numeric,
+		              current_location = ST_SetSRID(ST_MakePoint($4::double precision, $3::double precision), 4326) 
+		          WHERE rider_id = (SELECT user_id FROM users WHERE email = $5)`
 		
-		result, err := db.Exec(query, isAvailable, req.Lng, req.Lat, req.Email)
+		result, err := db.Exec(query, isAvailable, strings.ToLower(req.Status), req.Lat, req.Lng, req.Email)
 		if err != nil {
 			http.Error(w, "Status update failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -87,6 +88,9 @@ func HandleToggleStatus(db *sql.DB) http.HandlerFunc {
 		}
 
 		fmt.Fprintf(w, "Success: You are now %s", req.Status)
+
+		// Notify OCC (Live Map) via WebSockets about new/removed idle rider
+		go BroadcastOCCFleetUpdate(db)
 	}
 }
 
@@ -139,12 +143,7 @@ func HandleRiderDecision(db *sql.DB) http.HandlerFunc {
 			tx.Commit()
 
 			// Notify OCC (Live Map) via WebSockets
-			if websocket.GlobalHub != nil {
-				go func() {
-					fleet, _ := repository.GetAllActiveTrips(db)
-					websocket.GlobalHub.BroadcastToTopic(context.Background(), "fleet", fleet)
-				}()
-			}
+			go BroadcastOCCFleetUpdate(db)
 
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "message": "Ride accepted! Navigate to pickup."})
@@ -167,12 +166,7 @@ func HandleStartTrip(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Notify OCC (Live Map) via WebSockets
-		if websocket.GlobalHub != nil {
-			go func() {
-				fleet, _ := repository.GetAllActiveTrips(db)
-				websocket.GlobalHub.BroadcastToTopic(context.Background(), "fleet", fleet)
-			}()
-		}
+		go BroadcastOCCFleetUpdate(db)
 
 		json.NewEncoder(w).Encode(map[string]string{"status": "in_progress", "message": "Trip started! Drive safely."})
 	}

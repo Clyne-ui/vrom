@@ -621,9 +621,17 @@ func HandleOCCGetLiveFleet(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		idle, err := repository.GetIdleRiders(db)
+		if err != nil {
+			// Non-critical, just empty the idle list but log for investigation
+			fmt.Printf("⚠️  Warning: Failed to fetch idle riders: %v\n", err)
+			idle = []models.IdleRider{}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(models.LiveFleetResponse{
 			ActiveTrips: trips,
+			IdleRiders:  idle,
 			Hotspots:    []interface{}{}, // Placeholder
 		})
 	}

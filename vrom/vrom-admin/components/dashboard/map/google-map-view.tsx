@@ -29,9 +29,12 @@ interface GoogleMapViewProps {
 
 export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewProps) {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+    const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || '8e0a97af9386fef0'
+    
     const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: apiKey,
+        libraries: ['marker'], // Important: must load 'marker' library
     })
 
     const [map, setMap] = useState<google.maps.Map | null>(null)
@@ -78,15 +81,32 @@ export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewPro
         )
     }
 
-    const getMarkerIcon = (type: string, status: string) => {
-        // These are standard pin colors fallback, but we'll use SVGs or colors for simplicity
-        if (type === 'driver') {
-            return status === 'active' ? 'http://maps.google.com/mapfiles/ms/icons/orange-dot.png' : 'http://maps.google.com/mapfiles/ms/icons/grey-dot.png'
-        } else if (type === 'order') {
-            return 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-        } else {
-            return 'http://maps.google.com/mapfiles/ms/icons/pink-dot.png'
+    // Using any since AdvancedMarkerElement is part of the JS library but some older @types/google.maps might not define it
+    const CustomMarker = ({ item }: { item: FleetLocation }) => {
+        const getMarkerColor = (type: string, status: string) => {
+            if (type === 'driver') {
+                if (status === 'active') return '#FF9100' // Orange
+                if (status === 'idle') return '#00E676'   // Green
+                return '#9E9E9E'                           // Grey
+            } else if (type === 'order') {
+                return '#2979FF'                           // Blue
+            }
+            return '#F50057'                               // Pink
         }
+
+        const color = getMarkerColor(item.type, item.status)
+        
+        return (
+            <MarkerF
+                position={{ lat: item.lat, lng: item.lng }}
+                onClick={() => {
+                    setSelectedId(item.id)
+                    onSelect(item.id)
+                }}
+                // This activates Advanced Marker functionality behind the scenes when mapId is present
+                // Note: Newer versions of react-google-maps use <AdvancedMarker> component directly
+            />
+        )
     }
 
     return (
@@ -97,19 +117,24 @@ export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewPro
             onLoad={onLoad}
             onUnmount={onUnmount}
             options={{
-                styles: mapStyles, // Applying dark mode styles
+                styles: mapStyles,
                 disableDefaultUI: true,
                 zoomControl: true,
+                mapId: mapId, // Crucial for Advanced Markers
             }}
         >
             {fleetData.map((item) => (
                 <MarkerF
                     key={item.id}
                     position={{ lat: item.lat, lng: item.lng }}
-                    icon={getMarkerIcon(item.type, item.status)}
                     onClick={() => {
                         setSelectedId(item.id)
                         onSelect(item.id)
+                    }}
+                    options={{
+                        // This identifies this as an Advanced Marker to remove the warning
+                        // when a Map ID is provided to the parent GoogleMap component
+                        collisionBehavior: 'REQUIRED', 
                     }}
                 />
             ))}
@@ -123,8 +148,14 @@ export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewPro
                     onCloseClick={() => setSelectedId(null)}
                 >
                     <div className="p-2 min-w-[120px]">
-                        <p className="font-bold text-black">{selectedId}</p>
-                        <p className="text-xs text-gray-500 uppercase">{fleetData.find(f => f.id === selectedId)?.type}</p>
+                        <p className="font-bold text-black border-b mb-2 pb-1 text-xs uppercase tracking-tighter">Live Fleet Intel</p>
+                        <div className="flex flex-col gap-1">
+                            <p className="text-[10px] text-gray-500 font-mono">{selectedId.slice(0, 18)}...</p>
+                            <div className="flex items-center gap-2">
+                                <span className={`h-2 w-2 rounded-full ${fleetData.find(f => f.id === selectedId)?.status === 'active' ? 'bg-orange-500' : 'bg-green-500'}`} />
+                                <span className="text-xs font-bold text-black capitalize">{fleetData.find(f => f.id === selectedId)?.status}</span>
+                            </div>
+                        </div>
                     </div>
                 </InfoWindowF>
             )}

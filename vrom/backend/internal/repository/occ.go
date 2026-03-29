@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 	"vrom-backend/internal/models"
 )
 
@@ -376,16 +377,16 @@ func UpdateSecurityAlert(db *sql.DB, alertID string, status string) error {
 
 func GetAllActiveTrips(db *sql.DB) ([]models.TripSummary, error) {
 	rows, err := db.Query(`
-		SELECT t.trip_id::text, t.status, t.actual_fare, t.created_at,
-		       t.pickup_address, t.dropoff_address,
-		       ST_Y(t.pickup_location::geometry) as p_lat, ST_X(t.pickup_location::geometry) as p_lng,
-		       ST_Y(t.dropoff_location::geometry) as d_lat, ST_X(t.dropoff_location::geometry) as d_lng,
+		SELECT trip.trip_id::text, trip.status, trip.actual_fare, trip.created_at,
+		       trip.pickup_address, trip.dropoff_address,
+		       ST_Y(trip.pickup_location::geometry) as p_lat, ST_X(trip.pickup_location::geometry) as p_lng,
+		       ST_Y(trip.dropoff_location::geometry) as d_lat, ST_X(trip.dropoff_location::geometry) as d_lng,
 		       b.full_name as rider_name, b.phone_number as rider_phone,
 		       s.full_name as driver_name, s.phone_number as driver_phone
-		FROM trips t
-		LEFT JOIN users b ON t.buyer_id = b.user_id
-		LEFT JOIN users s ON t.seller_id = s.user_id
-		WHERE t.status IN ('pending', 'accepted', 'picked_up')`)
+		FROM trips trip
+		LEFT JOIN users b ON trip.buyer_id = b.user_id
+		LEFT JOIN users s ON trip.rider_id = s.user_id
+		WHERE trip.status IN ('pending', 'accepted', 'picked_up')`)
 	if err != nil {
 		return nil, err
 	}
@@ -406,4 +407,35 @@ func GetAllActiveTrips(db *sql.DB) ([]models.TripSummary, error) {
 		}
 	}
 	return trips, nil
+}
+
+func GetIdleRiders(db *sql.DB) ([]models.IdleRider, error) {
+	rows, err := db.Query(`
+		SELECT p.rider_id::text, COALESCE(p.last_lat, 0), COALESCE(p.last_lng, 0),
+		       u.full_name, u.phone_number
+		FROM rider_profiles p
+		JOIN users u ON p.rider_id = u.user_id
+		WHERE (p.is_available = true OR TRIM(LOWER(p.status::text)) = 'online')
+		  AND NOT EXISTS (
+			  SELECT 1 FROM trips t 
+			  WHERE t.rider_id = p.rider_id 
+			    AND TRIM(LOWER(t.status::text)) IN ('pending', 'accepted', 'picked_up')
+		  )`)
+	if err != nil {
+		fmt.Printf("⚠️ Query Error in GetIdleRiders: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var idle []models.IdleRider
+	for rows.Next() {
+		var r models.IdleRider
+		if err := rows.Scan(&r.RiderID, &r.Lat, &r.Lng, &r.RiderName, &r.RiderPhone); err != nil {
+			fmt.Printf("⚠️ Scan Error in GetIdleRiders: %v\n", err)
+			continue
+		}
+		r.LastSeen = time.Now().Format(time.RFC3339)
+		idle = append(idle, r)
+	}
+	return idle, nil
 }

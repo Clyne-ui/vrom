@@ -31,10 +31,13 @@ export default function MapPage() {
   // New state for displaying the right-side metric drill-down drawer
   const [selectedMetric, setSelectedMetric] = useState<'driver' | 'order' | 'demand' | null>(null)
 
-  const mapBackendToFleet = (trips: any[]): FleetLocation[] => {
-    return trips.flatMap((t: any) => [
+  const mapBackendToFleet = (data: { active_trips?: any[], idle_riders?: any[] }): FleetLocation[] => {
+    const trips = data.active_trips || []
+    const idle = data.idle_riders || []
+
+    const mappedTrips = trips.flatMap((t: any) => [
       { 
-        id: `DRV-${t.trip_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`, 
+        id: `ACT-DRV-${t.trip_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`, 
         lat: t.p_lat || -1.2863, 
         lng: t.p_lng || 36.8172, 
         type: 'driver' as const, 
@@ -60,6 +63,19 @@ export default function MapPage() {
         address: t.dropoff_address || 'Destination'
       }
     ])
+
+    const mappedIdle = idle.map((r: any) => ({
+      id: `IDL-DRV-${r.rider_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`,
+      lat: r.lat,
+      lng: r.lng,
+      type: 'driver' as const,
+      status: 'idle' as const,
+      driverName: r.rider_name,
+      driverPhone: r.rider_phone,
+      address: 'Waiting for orders'
+    }))
+
+    return [...mappedTrips, ...mappedIdle]
   }
 
   useEffect(() => {
@@ -71,9 +87,7 @@ export default function MapPage() {
         })
         if (response.ok) {
           const data = await response.json()
-          if (data.active_trips) {
-            setFleetData(mapBackendToFleet(data.active_trips))
-          }
+          setFleetData(mapBackendToFleet(data))
         }
       } catch (err) {
         console.error('Failed to fetch fleet:', err)
@@ -89,13 +103,14 @@ export default function MapPage() {
   const { data: wsData } = useOCCWebSocket('fleet')
 
   useEffect(() => {
-    if (wsData && Array.isArray(wsData)) {
-      setFleetData(mapBackendToFleet(wsData))
+    if (wsData && typeof wsData === 'object') {
+      setFleetData(mapBackendToFleet(wsData as any))
     }
   }, [wsData])
 
   const stats = {
     activeDrivers: fleetData.filter(d => d.type === 'driver' && d.status === 'active').length,
+    idleDrivers: fleetData.filter(d => d.type === 'driver' && d.status === 'idle').length,
     pendingOrders: fleetData.filter(d => d.type === 'order').length,
     demandHotspots: fleetData.filter(d => d.type === 'demand').length,
     avgResponse: 4.8,
@@ -125,7 +140,15 @@ export default function MapPage() {
           onClick={() => handleMetricClick('driver')}
         >
           <div className="flex items-start justify-between">
-            <div><p className="text-xs text-muted-foreground uppercase font-bold">Active Drivers</p><p className="text-2xl font-bold text-foreground mt-1">{stats.activeDrivers}</p></div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase font-bold">Fleet Status</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <p className="text-2xl font-bold text-foreground">{stats.activeDrivers + stats.idleDrivers}</p>
+                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
+                  {stats.activeDrivers} Active / {stats.idleDrivers} Idle
+                </p>
+              </div>
+            </div>
             <Navigation className="h-5 w-5 text-primary" />
           </div>
         </Card>
@@ -187,7 +210,11 @@ export default function MapPage() {
               <div className="space-y-2.5 text-xs">
                 <div className="flex items-center gap-2.5">
                   <div className="h-3 w-3 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-                  <span className="text-foreground font-medium">Active Drivers</span>
+                  <span className="text-foreground font-medium">Active Trips</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <div className="h-3 w-3 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                  <span className="text-foreground font-medium">Available Riders</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div className="h-3 w-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />

@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"vrom-backend/internal/api/websocket"
 	"vrom-backend/internal/models"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
@@ -215,12 +214,7 @@ func HandleRequestRide(db *sql.DB, rustAddr string) http.HandlerFunc {
 		}()
 
 		// 4. Notify OCC (Live Map) via WebSockets
-		if websocket.GlobalHub != nil {
-			go func() {
-				fleet, _ := repository.GetAllActiveTrips(db)
-				websocket.GlobalHub.BroadcastToTopic(context.Background(), "fleet", fleet)
-			}()
-		}
+		go BroadcastOCCFleetUpdate(db)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{

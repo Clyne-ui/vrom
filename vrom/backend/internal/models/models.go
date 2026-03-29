@@ -232,9 +232,19 @@ type OCCSecurityAlert struct {
 	ResolvedAt string `json:"resolved_at,omitempty"`
 }
 
+type IdleRider struct {
+	RiderID    string  `json:"rider_id"`
+	RiderName  string  `json:"rider_name"`
+	RiderPhone string  `json:"rider_phone"`
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
+	LastSeen   string  `json:"last_seen"`
+}
+
 type LiveFleetResponse struct {
 	ActiveTrips []TripSummary `json:"active_trips"`
-	Hotspots    []interface{}  `json:"hotspots"` 
+	IdleRiders  []IdleRider   `json:"idle_riders"`
+	Hotspots    []interface{} `json:"hotspots"` 
 }
 
 // SystemHealthDetail holds advanced metrics for a specific service.

@@ -36,8 +36,13 @@ export function useOCCWebSocket(topic: string) {
 
     ws.onmessage = (event) => {
       try {
-        const payload = JSON.parse(event.data)
-        setData(payload)
+        const msg = JSON.parse(event.data)
+        // If it's a wrapped message (has target_user_id and payload)
+        if (msg && typeof msg === 'object' && 'payload' in msg) {
+          setData(msg.payload)
+        } else {
+          setData(msg)
+        }
       } catch (err) {
         console.error('WS: Data parsing error', err)
       }
