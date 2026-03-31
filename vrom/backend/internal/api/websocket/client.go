@@ -58,6 +58,9 @@ func (c *Client) ReadPump() {
 				c.Hub.Subscribe <- &TopicAction{Client: c, Topic: req.Topic}
 			} else if req.Action == "unsubscribe" && req.Topic != "" {
 				c.Hub.Unsubscribe <- &TopicAction{Client: c, Topic: req.Topic}
+			} else if req.Action == "ping" {
+				// Internal heartbeat - just return a pong
+				c.Send <- []byte(`"pong"`)
 			}
 		}
 	}

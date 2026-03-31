@@ -14,6 +14,7 @@ import (
 	"vrom-backend/internal/services"
 	"math/rand"
 	"net"
+	"log"
 )
 
 // ─────────────────────────────────────────────────
@@ -740,3 +741,25 @@ func HandleCreateAdmin(db *sql.DB) http.HandlerFunc {
 		})
 	}
 }
+
+// HandleOCCGetRiderDetails returns the full dossier for a single rider.
+func HandleOCCGetRiderDetails(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		riderID := r.URL.Query().Get("id")
+		if riderID == "" {
+			http.Error(w, "Missing rider ID", http.StatusBadRequest)
+			return
+		}
+
+		detail, err := repository.GetRiderFullDetail(db, riderID)
+		if err != nil {
+			log.Printf("⚠️ Error fetching rider details: %v", err)
+			http.Error(w, "Rider not found or database error", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(detail)
+	}
+}
+

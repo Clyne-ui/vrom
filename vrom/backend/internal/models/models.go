@@ -280,3 +280,25 @@ type SystemNotification struct {
 	Read      bool   `json:"read"`
 	CreatedAt string `json:"created_at"`
 }
+// RiderDocument represents a compliance document for a rider.
+type RiderDocument struct {
+	DocumentType       string `json:"document_type"`
+	ImageURL           string `json:"image_url"`
+	VerificationStatus string `json:"verification_status"`
+}
+
+// RiderFullDetail represents the complete profile for the admin drill-down.
+type RiderFullDetail struct {
+	UserID         string          `json:"user_id"`
+	FullName       string          `json:"full_name"`
+	Email          string          `json:"email"`
+	PhoneNumber    string          `json:"phone_number"`
+	VehicleType    string          `json:"vehicle_type"`
+	PlateNumber    string          `json:"plate_number"`
+	Status         string          `json:"status"`
+	IsAvailable    bool            `json:"is_available"`
+	LastLat        float64         `json:"last_lat"`
+	LastLng        float64         `json:"last_lng"`
+	Documents      []RiderDocument `json:"documents"`
+	CurrentTrip    *TripSummary    `json:"current_trip,omitempty"`
+}

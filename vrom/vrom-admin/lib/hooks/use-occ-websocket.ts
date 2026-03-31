@@ -32,11 +32,23 @@ export function useOCCWebSocket(topic: string) {
         clearTimeout(reconnectTimeoutRef.current)
         reconnectTimeoutRef.current = null
       }
+
+      // Heartbeat to keep connection alive (application-level)
+      const heartbeat = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'ping' }))
+        }
+      }, 30000)
+
+      ws.addEventListener('close', () => clearInterval(heartbeat), { once: true })
     }
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        // Ignore pongs
+        if (msg === 'pong' || msg?.action === 'pong') return
+
         // If it's a wrapped message (has target_user_id and payload)
         if (msg && typeof msg === 'object' && 'payload' in msg) {
           setData(msg.payload)
@@ -49,6 +61,7 @@ export function useOCCWebSocket(topic: string) {
     }
 
     ws.onclose = (event) => {
+      // Logic for reconnect...
       console.warn(`WS: Connection Closed (Topic: ${topic}). Code: ${event.code}, Reason: ${event.reason}`)
       setStatus('disconnected')
       

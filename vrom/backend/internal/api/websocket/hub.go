@@ -117,8 +117,24 @@ func (h *Hub) Run() {
 	}
 }
 
-// BroadcastToTopic sends a message to all users subscribed to a specific topic across the cluster.
+// BroadcastToTopic sends a message to all users subscribed to a specific topic.
+// It sends to local clients directly AND publishes to Redis for other cluster nodes.
 func (h *Hub) BroadcastToTopic(ctx context.Context, topic string, payload interface{}) error {
+	payloadBytes, _ := json.Marshal(payload)
+	
+	// 1. Send to LOCAL clients on this specific server instance
+	if topicClients, ok := h.TopicClients[topic]; ok {
+		for client := range topicClients {
+			select {
+			case client.Send <- payloadBytes:
+			default:
+				// Clean up stale client
+				delete(h.TopicClients[topic], client)
+			}
+		}
+	}
+
+	// 2. Publish to Redis so other Go servers in the cluster receive it
 	msg := NotificationMessage{
 		TargetUserID: "__TOPIC__:" + topic,
 		Payload:      payload,
@@ -127,7 +143,17 @@ func (h *Hub) BroadcastToTopic(ctx context.Context, topic string, payload interf
 	if err != nil {
 		return err
 	}
-	return h.RedisClient.Publish(ctx, "vrom_notifications", data).Err()
+	
+	// Use a non-blocking publish or log error if Redis is down
+	if h.RedisClient != nil {
+		go func() {
+			if err := h.RedisClient.Publish(ctx, "vrom_notifications", data).Err(); err != nil {
+				log.Printf("WS: Redis broadcast failed (ignore if local dev): %v", err)
+			}
+		}()
+	}
+
+	return nil
 }
 
 // SendToUser triggers a message to be sent to a specific user, regardless of which Go server they are on.

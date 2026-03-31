@@ -27,117 +27,89 @@ interface GoogleMapViewProps {
     onSelect: (id: string) => void
 }
 
+const LIBRARIES: ("marker" | "drawing" | "geometry" | "localContext" | "places" | "visualization")[] = ['marker']
+
 export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewProps) {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
-    const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || '8e0a97af9386fef0'
-    
-    const { isLoaded, loadError } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: apiKey,
-        libraries: ['marker'], // Important: must load 'marker' library
-    })
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || '8e0a97af9386fef0'
+  
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: apiKey,
+    libraries: LIBRARIES, // Use static constant to prevent re-downloads
+  })
 
-    const [map, setMap] = useState<google.maps.Map | null>(null)
-    const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [map, setMap] = useState<google.maps.Map | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-    const onLoad = useCallback((map: google.maps.Map) => {
-        setMap(map)
-    }, [])
+  const onLoad = useCallback((map: google.maps.Map) => {
+    setMap(map)
+  }, [])
 
-    const onUnmount = useCallback(() => {
-        setMap(null)
-    }, [])
+  const onUnmount = useCallback(() => {
+    setMap(null)
+  }, [])
 
-    if (!apiKey) {
-        return (
-            <div className="h-full w-full flex items-center justify-center bg-destructive/10 border-2 border-destructive/30 rounded-xl p-8 text-center">
-                <div className="max-w-md">
-                    <h3 className="text-xl font-bold text-destructive mb-2 uppercase tracking-tighter">Google Maps API Key Missing</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Please add your API key to the .env file as:</p>
-                    <code className="bg-destructive/20 px-3 py-1.5 rounded text-destructive font-mono text-xs block mb-4">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=YOUR_KEY</code>
-                    <p className="text-xs text-muted-foreground">Once added, restart your development server to enable the live fleet tracking system.</p>
-                </div>
-            </div>
-        )
-    }
-
-    if (loadError) {
-        return (
-            <div className="h-full w-full flex items-center justify-center bg-destructive/10 p-8 text-center">
-                <div className="max-w-md">
-                    <h3 className="text-xl font-bold text-destructive mb-2">Google Maps Error</h3>
-                    <p className="text-sm text-muted-foreground mb-4">{loadError.message}</p>
-                    <p className="text-xs text-muted-foreground">Ensure "Maps JavaScript API" is enabled in your Google Cloud Console for this project.</p>
-                </div>
-            </div>
-        )
-    }
-
-    if (!isLoaded) {
-        return (
-            <div className="h-full w-full flex items-center justify-center bg-muted/20 animate-pulse text-muted-foreground uppercase tracking-widest text-sm font-bold">
-                Initializing Premium Map System...
-            </div>
-        )
-    }
-
-    // Using any since AdvancedMarkerElement is part of the JS library but some older @types/google.maps might not define it
-    const CustomMarker = ({ item }: { item: FleetLocation }) => {
-        const getMarkerColor = (type: string, status: string) => {
-            if (type === 'driver') {
-                if (status === 'active') return '#FF9100' // Orange
-                if (status === 'idle') return '#00E676'   // Green
-                return '#9E9E9E'                           // Grey
-            } else if (type === 'order') {
-                return '#2979FF'                           // Blue
-            }
-            return '#F50057'                               // Pink
-        }
-
-        const color = getMarkerColor(item.type, item.status)
-        
-        return (
-            <MarkerF
-                position={{ lat: item.lat, lng: item.lng }}
-                onClick={() => {
-                    setSelectedId(item.id)
-                    onSelect(item.id)
-                }}
-                // This activates Advanced Marker functionality behind the scenes when mapId is present
-                // Note: Newer versions of react-google-maps use <AdvancedMarker> component directly
-            />
-        )
-    }
-
+  if (!apiKey) {
     return (
-        <GoogleMap
-            mapContainerStyle={containerStyle}
-            center={center}
-            zoom={12}
-            onLoad={onLoad}
-            onUnmount={onUnmount}
-            options={{
-                styles: mapStyles,
-                disableDefaultUI: true,
-                zoomControl: true,
-                mapId: mapId, // Crucial for Advanced Markers
-            }}
-        >
-            {fleetData.map((item) => (
-                <MarkerF
-                    key={item.id}
-                    position={{ lat: item.lat, lng: item.lng }}
-                    onClick={() => {
-                        setSelectedId(item.id)
-                        onSelect(item.id)
-                    }}
-                    options={{
-                        // This identifies this as an Advanced Marker to remove the warning
-                        // when a Map ID is provided to the parent GoogleMap component
-                        collisionBehavior: 'REQUIRED', 
-                    }}
-                />
-            ))}
+      <div className="h-full w-full flex items-center justify-center bg-destructive/10 border-2 border-destructive/30 rounded-xl p-8 text-center">
+        <div className="max-w-md">
+          <h3 className="text-xl font-bold text-destructive mb-2 uppercase tracking-tighter">Google Maps API Key Missing</h3>
+          <p className="text-sm text-muted-foreground mb-4">Please add your API key to the .env file as:</p>
+          <code className="bg-destructive/20 px-3 py-1.5 rounded text-destructive font-mono text-xs block mb-4">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=YOUR_KEY</code>
+          <p className="text-xs text-muted-foreground">Once added, restart your development server to enable the live fleet tracking system.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-destructive/10 p-8 text-center">
+        <div className="max-w-md">
+          <h3 className="text-xl font-bold text-destructive mb-2">Google Maps Error</h3>
+          <p className="text-sm text-muted-foreground mb-4">{loadError.message}</p>
+          <p className="text-xs text-muted-foreground">Ensure "Maps JavaScript API" is enabled in your Google Cloud Console for this project.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-muted/20 animate-pulse text-muted-foreground uppercase tracking-widest text-sm font-bold">
+        Initializing Premium Map System...
+      </div>
+    )
+  }
+
+  return (
+    <GoogleMap
+      mapContainerStyle={containerStyle}
+      center={center}
+      zoom={12}
+      onLoad={onLoad}
+      onUnmount={onUnmount}
+      options={{
+        // styles: mapStyles, // REMOVED: Styles are controlled via Cloud Map ID now
+        disableDefaultUI: true,
+        zoomControl: true,
+        mapId: mapId, // High Performance Advanced Markers
+      }}
+    >
+      {fleetData.map((item) => (
+        <MarkerF
+          key={item.id}
+          position={{ lat: item.lat, lng: item.lng }}
+          onClick={() => {
+            setSelectedId(item.id)
+            onSelect(item.id)
+          }}
+          options={{
+            collisionBehavior: 'REQUIRED' as any, // REQUIRED for advanced markers
+          }}
+        />
+      ))}
 
             {selectedId && (
                 <InfoWindowF

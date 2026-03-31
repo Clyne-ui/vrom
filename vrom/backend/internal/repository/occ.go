@@ -415,7 +415,8 @@ func GetIdleRiders(db *sql.DB) ([]models.IdleRider, error) {
 		       u.full_name, u.phone_number
 		FROM rider_profiles p
 		JOIN users u ON p.rider_id = u.user_id
-		WHERE (p.is_available = true OR TRIM(LOWER(p.status::text)) = 'online')
+		WHERE TRIM(LOWER(p.status::text)) IN ('online', 'idle')
+		  AND p.is_available = true
 		  AND NOT EXISTS (
 			  SELECT 1 FROM trips t 
 			  WHERE t.rider_id = p.rider_id 
@@ -439,3 +440,62 @@ func GetIdleRiders(db *sql.DB) ([]models.IdleRider, error) {
 	}
 	return idle, nil
 }
+
+// GetRiderFullDetail fetches the complete profile, vehicle, and documents for a single rider.
+func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, error) {
+	var detail models.RiderFullDetail
+
+	// 1. Fetch Basic Info & Profile
+	query := `
+		SELECT u.user_id, u.full_name, u.email, u.phone_number,
+		       p.vehicle_type, p.plate_number, p.status, p.is_available,
+		       COALESCE(p.last_lat, 0), COALESCE(p.last_lng, 0)
+		FROM users u
+		JOIN rider_profiles p ON u.user_id = p.rider_id
+		WHERE u.user_id = $1`
+
+	err := db.QueryRow(query, userID).Scan(
+		&detail.UserID, &detail.FullName, &detail.Email, &detail.PhoneNumber,
+		&detail.VehicleType, &detail.PlateNumber, &detail.Status, &detail.IsAvailable,
+		&detail.LastLat, &detail.LastLng,
+	)
+	if err != nil {
+		return detail, err
+	}
+
+	// 2. Fetch Documents
+	docQuery := `
+		SELECT document_value, image_url, verification_status
+		FROM user_compliance_data
+		WHERE user_id = $1`
+
+	rows, err := db.Query(docQuery, userID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var doc models.RiderDocument
+			if err := rows.Scan(&doc.DocumentType, &doc.ImageURL, &doc.VerificationStatus); err == nil {
+				detail.Documents = append(detail.Documents, doc)
+			}
+		}
+	}
+
+	// 3. Fetch Recent Trip (Latest one)
+	tripQuery := `
+		SELECT trip_id, status, fare, pickup_address, dropoff_address, created_at
+		FROM trips
+		WHERE rider_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1`
+
+	var t models.TripSummary
+	err = db.QueryRow(tripQuery, userID).Scan(
+		&t.TripID, &t.Status, &t.Fare, &t.PickupAddress, &t.DropoffAddress, &t.CreatedAt,
+	)
+	if err == nil {
+		detail.CurrentTrip = &t
+	}
+
+	return detail, nil
+}
+

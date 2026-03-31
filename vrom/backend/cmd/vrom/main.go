@@ -148,6 +148,8 @@ func main() {
 
 	// --- 5. ADMIN HANDLERS ---
 	mux.HandleFunc("/admin/riders/pending", middleware.AdminOnly(db, vrom_http.HandleGetPendingRiders(db)))
+	mux.HandleFunc("/occ/fleet/rider", middleware.AdminOnly(db, vrom_http.HandleOCCGetRiderDetails(db)))
+
 	mux.HandleFunc("/admin/riders/approve", middleware.AdminOnly(db, vrom_http.HandleApproveRider(db)))
 	mux.HandleFunc("/admin/riders/reject", middleware.AdminOnly(db, vrom_http.HandleRejectRider(db)))
 

@@ -7,9 +7,11 @@ import { Layers, MapPin, TrendingUp, Navigation, Activity, X, User, Phone, MapPi
 import { useUser } from '@/lib/contexts/user-context'
 import { useOCCWebSocket } from '@/lib/hooks/use-occ-websocket'
 import { GoogleMapView } from '@/components/dashboard/map/google-map-view'
+import { RiderDetailsDrawer } from '@/components/dashboard/map/rider-details-drawer'
 
 interface FleetLocation {
   id: string
+  rawId?: string // Original database UUID
   lat: number
   lng: number
   type: 'driver' | 'order' | 'demand'
@@ -27,6 +29,7 @@ export default function MapPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [mapType, setMapType] = useState<'fleet' | 'demand' | 'supply'>('fleet')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedRiderFullId, setSelectedRiderFullId] = useState<string | null>(null)
   
   // New state for displaying the right-side metric drill-down drawer
   const [selectedMetric, setSelectedMetric] = useState<'driver' | 'order' | 'demand' | null>(null)
@@ -38,6 +41,7 @@ export default function MapPage() {
     const mappedTrips = trips.flatMap((t: any) => [
       { 
         id: `ACT-DRV-${t.trip_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`, 
+        rawId: t.rider_id, // Store for drill-down
         lat: t.p_lat || -1.2863, 
         lng: t.p_lng || 36.8172, 
         type: 'driver' as const, 
@@ -66,6 +70,7 @@ export default function MapPage() {
 
     const mappedIdle = idle.map((r: any) => ({
       id: `IDL-DRV-${r.rider_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`,
+      rawId: r.rider_id, // Store for drill-down
       lat: r.lat,
       lng: r.lng,
       type: 'driver' as const,
@@ -123,6 +128,7 @@ export default function MapPage() {
       setSelectedMetric(type)
       setMapType(type === 'driver' ? 'fleet' : type === 'order' ? 'supply' : 'demand')
       setSelectedId(null) // Clear individual map selection
+      setSelectedRiderFullId(null)
     }
   }
 
@@ -199,7 +205,11 @@ export default function MapPage() {
             <GoogleMapView
               fleetData={fleetData}
               mapType={mapType}
-              onSelect={setSelectedId}
+              onSelect={(id) => {
+                setSelectedId(id)
+                const raw = fleetData.find(f => f.id === id)?.rawId
+                if (raw) setSelectedRiderFullId(raw)
+              }}
             />
           </div>
 
@@ -282,7 +292,16 @@ export default function MapPage() {
                   )
                 })()}
 
-                <Button size="sm" className="w-full mt-5 bg-primary text-xs h-9">Track Live Location</Button>
+                <Button 
+                  size="sm" 
+                  className="w-full mt-5 bg-primary text-xs h-9"
+                  onClick={() => {
+                    const f = fleetData.find(f => f.id === selectedId)
+                    if (f?.rawId) setSelectedRiderFullId(f.rawId)
+                  }}
+                >
+                  View Full Profile
+                </Button>
               </Card>
             </div>
           )}
@@ -307,7 +326,14 @@ export default function MapPage() {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {fleetData.filter(d => d.type === selectedMetric).map((item, idx) => (
-                <Card key={idx} className="p-4 glass-dark border-border/50 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => setSelectedId(item.id)}>
+                <Card 
+                  key={idx} 
+                  className="p-4 glass-dark border-border/50 hover:border-primary/30 transition-colors cursor-pointer" 
+                  onClick={() => {
+                    setSelectedId(item.id)
+                    if (item.rawId) setSelectedRiderFullId(item.rawId)
+                  }}
+                >
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-xs font-mono font-bold text-primary">{item.id}</span>
                     <span className="text-[10px] bg-green-500/10 text-green-500 px-2 rounded-full uppercase tracking-wider font-bold">Live</span>
@@ -349,6 +375,13 @@ export default function MapPage() {
         )}
       </div>
 
+      {/* --- Full Profile Drill-Down Drawer --- */}
+      <RiderDetailsDrawer 
+        riderId={selectedRiderFullId} 
+        onClose={() => setSelectedRiderFullId(null)} 
+      />
+
     </div>
   )
 }
+
