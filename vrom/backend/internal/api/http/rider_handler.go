@@ -38,18 +38,23 @@ func HandleApproveRider(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			UserID string `json:"user_id"`
+			Region string `json:"region"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid input", http.StatusBadRequest)
 			return
 		}
 
-		if err := repository.ApproveRider(db, req.UserID); err != nil {
+		if req.Region == "" {
+			req.Region = "Nairobi" // Default or error out
+		}
+
+		if err := repository.ApproveRider(db, req.UserID, req.Region); err != nil {
 			http.Error(w, "Approval failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		fmt.Fprintf(w, "Rider %s has been approved successfully!", req.UserID)
+		fmt.Fprintf(w, "Rider %s has been approved successfully in region %s!", req.UserID, req.Region)
 	}
 }
 

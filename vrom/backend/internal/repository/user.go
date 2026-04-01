@@ -182,13 +182,14 @@ func OnboardRider(db *sql.DB, data models.RiderOnboarding) error {
 	}
 
 	riderQuery := `
-        INSERT INTO rider_profiles (rider_id, vehicle_type, plate_number, model_year) 
-        VALUES ($1, $2, $3, 2024) 
+        INSERT INTO rider_profiles (rider_id, vehicle_type, plate_number, vehicle_photo_url, model_year) 
+        VALUES ($1, $2, $3, $4, 2024) 
         ON CONFLICT (rider_id) DO UPDATE SET 
             plate_number = $3, 
-            vehicle_type = $2`
+            vehicle_type = $2,
+            vehicle_photo_url = $4`
 
-	_, err = tx.ExecContext(ctx, riderQuery, data.UserID, data.VehicleType, data.PlateNumber)
+	_, err = tx.ExecContext(ctx, riderQuery, data.UserID, data.VehicleType, data.PlateNumber, data.VehiclePhotoURL)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -283,28 +284,42 @@ func OnboardSeller(db *sql.DB, data models.SellerOnboarding) error {
 	return tx.Commit()
 }
 
-func ApproveRider(db *sql.DB, userID string) error {
+func ApproveRider(db *sql.DB, userID string, region string) error {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	// 1. Mark user as verified
-	_, err = tx.ExecContext(ctx, "UPDATE users SET is_verified = true WHERE user_id = $1", userID)
+	// 1. Mark user as verified and assign region
+	_, err = tx.ExecContext(ctx, "UPDATE users SET is_verified = true, assigned_region = $1 WHERE user_id = $2", region, userID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 2. Update compliance status
+	// 2. Update rider profile status to 'online' (available for trips)
+	riderProfileQuery := `
+		INSERT INTO rider_profiles (rider_id, status, is_available, vehicle_type, plate_number)
+		VALUES ($1, 'online', true, 'N/A', 'PENDING')
+		ON CONFLICT (rider_id) DO UPDATE SET 
+			status = 'online', 
+			is_available = true`
+	
+	_, err = tx.ExecContext(ctx, riderProfileQuery, userID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 3. Update compliance status
 	_, err = tx.ExecContext(ctx, "UPDATE user_compliance_data SET verification_status = 'approved' WHERE user_id = $1", userID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 3. RECORD THE ACTIVITY
+	// 4. RECORD THE ACTIVITY
 	_, err = tx.ExecContext(ctx, `
         INSERT INTO user_activities (user_id, activity_type, description, amount) 
         VALUES ($1, 'system', 'Account successfully verified by Admin. You can now start taking trips.', 0)`,

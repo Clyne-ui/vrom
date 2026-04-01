@@ -169,6 +169,8 @@ type TripSummary struct {
 	DriverPhone    string  `json:"driver_phone,omitempty"`
 	RiderName      string  `json:"rider_name,omitempty"`
 	RiderPhone     string  `json:"rider_phone,omitempty"`
+	CustomerName   string  `json:"customer_name,omitempty"`
+	CustomerPhone  string  `json:"customer_phone,omitempty"`
 }
 
 type OrderSummary struct {
@@ -287,18 +289,22 @@ type RiderDocument struct {
 	VerificationStatus string `json:"verification_status"`
 }
 
+
+
 // RiderFullDetail represents the complete profile for the admin drill-down.
 type RiderFullDetail struct {
-	UserID         string          `json:"user_id"`
-	FullName       string          `json:"full_name"`
-	Email          string          `json:"email"`
-	PhoneNumber    string          `json:"phone_number"`
-	VehicleType    string          `json:"vehicle_type"`
-	PlateNumber    string          `json:"plate_number"`
-	Status         string          `json:"status"`
-	IsAvailable    bool            `json:"is_available"`
-	LastLat        float64         `json:"last_lat"`
-	LastLng        float64         `json:"last_lng"`
-	Documents      []RiderDocument `json:"documents"`
-	CurrentTrip    *TripSummary    `json:"current_trip,omitempty"`
+	UserID          string          `json:"user_id"`
+	FullName        string          `json:"full_name"`
+	Email           string          `json:"email"`
+	PhoneNumber     string          `json:"phone_number"`
+	VehicleType     string          `json:"vehicle_type"`
+	PlateNumber     string          `json:"plate_number"`
+	VehiclePhotoURL string          `json:"vehicle_photo_url"`
+	AssignedRegion  string          `json:"assigned_region"`
+	Status          string          `json:"status"`
+	IsAvailable     bool            `json:"is_available"`
+	LastLat         float64         `json:"last_lat"`
+	LastLng         float64         `json:"last_lng"`
+	Documents       []RiderDocument `json:"documents"`
+	CurrentTrip     *TripSummary    `json:"current_trip,omitempty"`
 }

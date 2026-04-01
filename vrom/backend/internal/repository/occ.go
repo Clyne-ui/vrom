@@ -445,18 +445,20 @@ func GetIdleRiders(db *sql.DB) ([]models.IdleRider, error) {
 func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, error) {
 	var detail models.RiderFullDetail
 
-	// 1. Fetch Basic Info & Profile
+	// 1. Fetch Basic Info & Profile with assigned_region and vehicle_photo_url
 	query := `
-		SELECT u.user_id, u.full_name, u.email, u.phone_number,
-		       p.vehicle_type, p.plate_number, p.status, p.is_available,
+		SELECT u.user_id, u.full_name, u.email, u.phone_number, u.assigned_region,
+		       COALESCE(p.vehicle_type, 'N/A'), COALESCE(p.plate_number, 'PENDING'), 
+		       COALESCE(p.vehicle_photo_url, ''), COALESCE(p.status, 'pending'), 
+		       COALESCE(p.is_available, false),
 		       COALESCE(p.last_lat, 0), COALESCE(p.last_lng, 0)
 		FROM users u
-		JOIN rider_profiles p ON u.user_id = p.rider_id
+		LEFT JOIN rider_profiles p ON u.user_id = p.rider_id
 		WHERE u.user_id = $1`
 
 	err := db.QueryRow(query, userID).Scan(
-		&detail.UserID, &detail.FullName, &detail.Email, &detail.PhoneNumber,
-		&detail.VehicleType, &detail.PlateNumber, &detail.Status, &detail.IsAvailable,
+		&detail.UserID, &detail.FullName, &detail.Email, &detail.PhoneNumber, &detail.AssignedRegion,
+		&detail.VehicleType, &detail.PlateNumber, &detail.VehiclePhotoURL, &detail.Status, &detail.IsAvailable,
 		&detail.LastLat, &detail.LastLng,
 	)
 	if err != nil {
@@ -480,17 +482,20 @@ func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, erro
 		}
 	}
 
-	// 3. Fetch Recent Trip (Latest one)
+	// 3. Fetch Recent Trip (Latest one) with customer details
 	tripQuery := `
-		SELECT trip_id, status, fare, pickup_address, dropoff_address, created_at
-		FROM trips
-		WHERE rider_id = $1
-		ORDER BY created_at DESC
+		SELECT t.trip_id, t.status, t.fare, t.pickup_address, t.dropoff_address, t.created_at,
+		       u.full_name as customer_name, u.phone_number as customer_phone
+		FROM trips t
+		JOIN users u ON t.customer_id = u.user_id
+		WHERE t.rider_id = $1
+		ORDER BY t.created_at DESC
 		LIMIT 1`
 
 	var t models.TripSummary
 	err = db.QueryRow(tripQuery, userID).Scan(
 		&t.TripID, &t.Status, &t.Fare, &t.PickupAddress, &t.DropoffAddress, &t.CreatedAt,
+		&t.CustomerName, &t.CustomerPhone,
 	)
 	if err == nil {
 		detail.CurrentTrip = &t
