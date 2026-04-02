@@ -15,10 +15,18 @@ const center = {
 
 interface FleetLocation {
     id: string
+    rawId?: string
     lat: number
     lng: number
     type: 'driver' | 'order' | 'demand'
     status: 'active' | 'idle' | 'offline'
+    vehicleType?: string
+    driverName?: string
+    driverPhone?: string
+    riderName?: string
+    riderPhone?: string
+    fare?: number
+    address?: string
 }
 
 interface GoogleMapViewProps {
@@ -41,6 +49,40 @@ export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewPro
 
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // Returns the right icon config based on vehicle type and trip status
+  const getMarkerIcon = (item: FleetLocation): google.maps.Icon => {
+    const isOrder = item.type === 'order'
+    const isCar = item.vehicleType === 'car' || item.vehicleType === 'taxi'
+    
+    if (isOrder) {
+      // Destination pin — blue dot
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: '#3b82f6',
+        fillOpacity: 1,
+        strokeColor: '#1d4ed8',
+        strokeWeight: 2,
+      } as any
+    }
+
+    if (item.status === 'active') {
+      // Active rider on a trip — orange tint vehicle icon
+      return {
+        url: isCar ? '/car.svg' : '/motorcycle.svg',
+        scaledSize: new google.maps.Size(isCar ? 64 : 48, isCar ? 128 : 96),
+        anchor: new google.maps.Point(isCar ? 32 : 24, isCar ? 64 : 48),
+      }
+    }
+
+    // Idle rider — vehicle icon
+    return {
+      url: isCar ? '/car.svg' : '/motorcycle.svg',
+      scaledSize: new google.maps.Size(isCar ? 48 : 36, isCar ? 96 : 72),
+      anchor: new google.maps.Point(isCar ? 24 : 18, isCar ? 48 : 36),
+    }
+  }
 
   const onLoad = useCallback((map: google.maps.Map) => {
     setMap(map)
@@ -101,12 +143,11 @@ export function GoogleMapView({ fleetData, mapType, onSelect }: GoogleMapViewPro
         <MarkerF
           key={item.id}
           position={{ lat: item.lat, lng: item.lng }}
+          icon={getMarkerIcon(item)}
+          title={item.type === 'driver' ? item.driverName : item.riderName}
           onClick={() => {
             setSelectedId(item.id)
             onSelect(item.id)
-          }}
-          options={{
-            collisionBehavior: 'REQUIRED' as any, // REQUIRED for advanced markers
           }}
         />
       ))}

@@ -16,6 +16,7 @@ interface FleetLocation {
   lng: number
   type: 'driver' | 'order' | 'demand'
   status: 'active' | 'idle' | 'offline'
+  vehicleType?: string
   driverName?: string
   driverPhone?: string
   riderName?: string
@@ -75,6 +76,7 @@ export default function MapPage() {
       lng: r.lng,
       type: 'driver' as const,
       status: 'idle' as const,
+      vehicleType: r.vehicle_type || 'motorcycle',
       driverName: r.rider_name,
       driverPhone: r.rider_phone,
       address: 'Waiting for orders'

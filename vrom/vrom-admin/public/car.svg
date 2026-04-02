@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 128" width="64" height="128">
+  <!-- Yellow body -->
+  <path d="M16 8 Q32 4 48 8 L52 112 Q32 120 12 112 Z" fill="#FACC15" />
+  
+  <!-- Mirrors -->
+  <path d="M12 44 L6 40 L6 48 Z" fill="#EAB308" />
+  <path d="M52 44 L58 40 L58 48 Z" fill="#EAB308" />
+  
+  <!-- Windshield -->
+  <path d="M18 36 Q32 30 46 36 L48 52 Q32 56 16 52 Z" fill="#1E293B" />
+  
+  <!-- Rear window -->
+  <path d="M20 84 Q32 80 44 84 L46 72 Q32 76 18 72 Z" fill="#1E293B" />
+  
+  <!-- Roof -->
+  <path d="M18 52 Q32 56 46 52 L44 72 Q32 76 20 72 Z" fill="#EAB308" />
+  
+  <!-- Headlights -->
+  <rect x="16" y="10" width="8" height="4" rx="2" fill="#FEF08A" />
+  <rect x="40" y="10" width="8" height="4" rx="2" fill="#FEF08A" />
+  
+  <!-- Taillights -->
+  <rect x="16" y="108" width="10" height="4" rx="1" fill="#EF4444" />
+  <rect x="38" y="108" width="10" height="4" rx="1" fill="#EF4444" />
+</svg>

@@ -235,12 +235,13 @@ type OCCSecurityAlert struct {
 }
 
 type IdleRider struct {
-	RiderID    string  `json:"rider_id"`
-	RiderName  string  `json:"rider_name"`
-	RiderPhone string  `json:"rider_phone"`
-	Lat        float64 `json:"lat"`
-	Lng        float64 `json:"lng"`
-	LastSeen   string  `json:"last_seen"`
+	RiderID     string  `json:"rider_id"`
+	RiderName   string  `json:"rider_name"`
+	RiderPhone  string  `json:"rider_phone"`
+	VehicleType string  `json:"vehicle_type"`
+	Lat         float64 `json:"lat"`
+	Lng         float64 `json:"lng"`
+	LastSeen    string  `json:"last_seen"`
 }
 
 type LiveFleetResponse struct {

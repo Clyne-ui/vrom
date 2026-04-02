@@ -412,7 +412,8 @@ func GetAllActiveTrips(db *sql.DB) ([]models.TripSummary, error) {
 func GetIdleRiders(db *sql.DB) ([]models.IdleRider, error) {
 	rows, err := db.Query(`
 		SELECT p.rider_id::text, COALESCE(p.last_lat, 0), COALESCE(p.last_lng, 0),
-		       u.full_name, u.phone_number
+		       u.full_name, u.phone_number,
+		       COALESCE(p.vehicle_type, 'motorcycle') as vehicle_type
 		FROM rider_profiles p
 		JOIN users u ON p.rider_id = u.user_id
 		WHERE TRIM(LOWER(p.status::text)) IN ('online', 'idle')
@@ -431,7 +432,7 @@ func GetIdleRiders(db *sql.DB) ([]models.IdleRider, error) {
 	var idle []models.IdleRider
 	for rows.Next() {
 		var r models.IdleRider
-		if err := rows.Scan(&r.RiderID, &r.Lat, &r.Lng, &r.RiderName, &r.RiderPhone); err != nil {
+		if err := rows.Scan(&r.RiderID, &r.Lat, &r.Lng, &r.RiderName, &r.RiderPhone, &r.VehicleType); err != nil {
 			fmt.Printf("⚠️ Scan Error in GetIdleRiders: %v\n", err)
 			continue
 		}
@@ -447,7 +448,8 @@ func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, erro
 
 	// 1. Fetch Basic Info & Profile with assigned_region and vehicle_photo_url
 	query := `
-		SELECT u.user_id, u.full_name, u.email, u.phone_number, u.assigned_region,
+		SELECT u.user_id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone_number, ''), 
+		       COALESCE(u.assigned_region, ''),
 		       COALESCE(p.vehicle_type, 'N/A'), COALESCE(p.plate_number, 'PENDING'), 
 		       COALESCE(p.vehicle_photo_url, ''), COALESCE(p.status, 'pending'), 
 		       COALESCE(p.is_available, false),
@@ -484,10 +486,13 @@ func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, erro
 
 	// 3. Fetch Recent Trip (Latest one) with customer details
 	tripQuery := `
-		SELECT t.trip_id, t.status, t.fare, t.pickup_address, t.dropoff_address, t.created_at,
-		       u.full_name as customer_name, u.phone_number as customer_phone
+		SELECT t.trip_id, t.status, COALESCE(t.actual_fare, 0), 
+		       COALESCE(t.pickup_address, ''), COALESCE(t.dropoff_address, ''), 
+		       COALESCE(t.created_at::text, ''),
+		       COALESCE(u.full_name, 'Unknown') as customer_name, 
+		       COALESCE(u.phone_number, '') as customer_phone
 		FROM trips t
-		JOIN users u ON t.customer_id = u.user_id
+		LEFT JOIN users u ON t.customer_id = u.user_id
 		WHERE t.rider_id = $1
 		ORDER BY t.created_at DESC
 		LIMIT 1`
