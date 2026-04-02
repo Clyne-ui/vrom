@@ -203,6 +203,9 @@ func main() {
 	// CRM
 	mux.HandleFunc("/occ/crm/search", middleware.AdminOnly(db, vrom_http.HandleOCCSearchUsers(db)))
 	mux.HandleFunc("/occ/crm/history", middleware.AdminOnly(db, vrom_http.HandleOCCGetUserHistory(db)))
+	mux.HandleFunc("/occ/crm/history/delete", middleware.AdminOnly(db, vrom_http.HandleOCCDeleteHistoryItem(db)))
+	mux.HandleFunc("/occ/crm/history/clear", middleware.AdminOnly(db, vrom_http.HandleOCCClearUserHistory(db)))
+	
 	// Kill Switch
 	mux.HandleFunc("/occ/admin/suspend", middleware.AdminOnly(db, vrom_http.HandleOCCSuspendUser(db)))
 	mux.HandleFunc("/occ/admin/unsuspend", middleware.AdminOnly(db, vrom_http.HandleOCCUnsuspendUser(db)))

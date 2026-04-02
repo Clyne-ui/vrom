@@ -160,6 +160,31 @@ func GetUserFullHistory(db *sql.DB, userID string) (*models.AdminUserHistory, er
 	return &h, nil
 }
 
+// DeleteUserHistoryItem deletes a single activity, trip, or order record
+func DeleteUserHistoryItem(db *sql.DB, itemType, itemID string) error {
+	var query string
+	switch itemType {
+	case "activity":
+		query = `DELETE FROM user_activities WHERE id = $1`
+	case "trip":
+		query = `DELETE FROM trips WHERE trip_id = $1`
+	case "order":
+		query = `DELETE FROM orders WHERE order_id = $1`
+	default:
+		return fmt.Errorf("invalid history item type")
+	}
+	_, err := db.Exec(query, itemID)
+	return err
+}
+
+// ClearUserHistory completely wipes a user's activities, trips, and orders.
+func ClearUserHistory(db *sql.DB, userID string) error {
+	db.Exec(`DELETE FROM user_activities WHERE user_id = $1`, userID)
+	db.Exec(`DELETE FROM trips WHERE buyer_id = $1 OR rider_id = $1`, userID)
+	db.Exec(`DELETE FROM orders WHERE buyer_id = $1`, userID)
+	return nil
+}
+
 // ───────────────────────────────────────────────
 // KILL SWITCH & SUSPENSION
 // ───────────────────────────────────────────────

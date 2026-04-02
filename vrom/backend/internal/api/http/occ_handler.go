@@ -365,6 +365,49 @@ func HandleOCCGetUserHistory(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func HandleOCCDeleteHistoryItem(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		itemType := r.URL.Query().Get("type")
+		itemID := r.URL.Query().Get("id")
+		if itemType == "" || itemID == "" {
+			http.Error(w, "type and id required", http.StatusBadRequest)
+			return
+		}
+
+		if err := repository.DeleteUserHistoryItem(db, itemType, itemID); err != nil {
+			http.Error(w, "Failed to delete item", http.StatusInternalServerError)
+			return
+		}
+
+		adminEmail := r.Header.Get("X-User-Email")
+		repository.WriteAuditLog(db, adminEmail, "DELETED_HISTORY_ITEM", fmt.Sprintf("%s:%s", itemType, itemID), r.RemoteAddr)
+
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success"})
+	}
+}
+
+func HandleOCCClearUserHistory(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			UserID string `json:"user_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.UserID == "" {
+			http.Error(w, "user_id required", http.StatusBadRequest)
+			return
+		}
+
+		if err := repository.ClearUserHistory(db, req.UserID); err != nil {
+			http.Error(w, "Failed to clear history", http.StatusInternalServerError)
+			return
+		}
+
+		adminEmail := r.Header.Get("X-User-Email")
+		repository.WriteAuditLog(db, adminEmail, "CLEARED_USER_HISTORY", req.UserID, r.RemoteAddr)
+
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success"})
+	}
+}
+
 // ─────────────────────────────────────────────────
 // SECTION 4: KILL SWITCH
 // ─────────────────────────────────────────────────

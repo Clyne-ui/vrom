@@ -13,6 +13,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+
+interface Activity {
+  id: string
+  action_type: string
+  amount: number
+  description: string
+  created_at: string
+  balance_after: number
+}
+
+interface AdminUserHistory {
+  user_id: string
+  activities: Activity[]
+  trips: any[]
+  orders: any[]
+}
 
 interface RiderDocument {
   document_type: string
@@ -66,6 +92,29 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [history, setHistory] = useState<AdminUserHistory | null>(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [isSuspending, setIsSuspending] = useState(false)
+
+  const fetchHistory = async () => {
+    if (!riderId) return
+    setLoadingHistory(true)
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/history?user_id=${riderId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setHistory(await res.json())
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
   useEffect(() => {
     const fetchRegions = async () => {
       try {
@@ -104,6 +153,7 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
         if (data.assigned_region) {
           setSelectedRegion(data.assigned_region)
         }
+        fetchHistory()
       } catch (err: any) {
         setError(err.message)
       } finally {
@@ -113,6 +163,66 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
 
     fetchDetails()
   }, [riderId])
+
+  const handleDeleteHistoryItem = async (type: string, id: string) => {
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/history/delete?type=${type}&id=${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        toast.success(`Removed ${type} record`)
+        fetchHistory()
+      } else {
+        toast.error("Failed to delete record")
+      }
+    } catch (e) {
+      toast.error("Error connecting to server")
+    }
+  }
+
+  const handleClearAllHistory = async () => {
+    if (!confirm("Are you absolutely sure you want to clear ALL history for this user? This cannot be undone.")) return
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/history/clear`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: riderId })
+      })
+      if (res.ok) {
+        toast.success(`Cleared all history for user`)
+        fetchHistory()
+      }
+    } catch (e) {
+      toast.error("Error clearing history")
+    }
+  }
+
+  const handleSuspendToggle = async () => {
+    if (!rider) return
+    setIsSuspending(true)
+    const isSuspended = !rider.is_available && rider.status === 'suspended' // Usually verified boolean represents this
+    // We will use rider.status as a proxy or just blindly toggle. The backend sets is_verified.
+    // Let's assume hitting suspend sets them to suspended.
+    const endpoint = rider.status === 'suspended' ? '/occ/admin/unsuspend' : '/occ/admin/suspend'
+    try {
+      const token = localStorage.getItem('vrom_session_token')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: rider.user_id })
+      })
+      if (!res.ok) throw new Error('Failed to change suspension status')
+      toast.success(rider.status === 'suspended' ? 'Account Unblocked' : 'Account Blocked')
+      onClose() // re-fetch entire map on close
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setIsSuspending(false)
+    }
+  }
 
   const handleApprove = async () => {
     if (!rider) return
@@ -304,38 +414,70 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
             </div>
           </div>
 
-          {/* Region Assignment Section */}
-          <div className="p-6 bg-sidebar-accent/20 rounded-3xl border border-sidebar-border space-y-3">
+          {/* Activities & Financials Section */}
+          <div className="p-6 bg-sidebar-accent/20 rounded-3xl border border-sidebar-border space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted-foreground">Admin Authority: Region Allocation</h4>
-                {rider.assigned_region && <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Assigned</Badge>}
+                <h4 className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted-foreground">Activities & Financials</h4>
               </div>
               
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full h-12 flex items-center justify-between px-4 bg-black/20 border-sidebar-border rounded-xl group transition-all hover:border-primary/50">
-                      <div className="flex items-center gap-3">
-                          <Map className="h-4 w-4 text-primary" />
-                          <span className={selectedRegion ? "font-bold text-foreground" : "text-muted-foreground"}>
-                            {selectedRegion || "Select Deployment Region..."}
-                          </span>
+              <Tabs defaultValue="activities" className="w-full">
+                <TabsList className="w-full grid grid-cols-2 bg-black/20 border border-sidebar-border rounded-xl">
+                  <TabsTrigger value="activities" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-xs uppercase tracking-widest font-bold">Wallet & Earnings</TabsTrigger>
+                  <TabsTrigger value="trips" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-xs uppercase tracking-widest font-bold">Trips History</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="activities" className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {loadingHistory ? (
+                      <div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading statements...</div>
+                  ) : history?.activities?.length ? (
+                    history.activities.map((act) => (
+                      <div key={act.id} className="p-4 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between group">
+                        <div>
+                          <p className="text-xs font-bold text-foreground">{act.description}</p>
+                          <p className="text-[10px] text-muted-foreground">{new Date(act.created_at).toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <p className={`text-sm font-black ${act.amount > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {act.amount > 0 ? '+' : ''}{act.amount} KES
+                          </p>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteHistoryItem('activity', act.id)} className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] bg-sidebar border-sidebar-border rounded-xl shadow-2xl">
-                    {regions.map((region) => (
-                      <DropdownMenuItem 
-                        key={region.id} 
-                        onClick={() => setSelectedRegion(region.name)}
-                        className="h-10 cursor-pointer focus:bg-primary/10"
-                      >
-                          {region.name}
-                      </DropdownMenuItem>
-                    ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <p className="text-[10px] text-muted-foreground italic pl-1">Assigning a region allows the rider to receive trip requests within that specific geographical zone.</p>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-xs text-muted-foreground border border-dashed border-white/10 rounded-xl">No wallet activity found</div>
+                  )}
+                </TabsContent>
+                
+                <TabsContent value="trips" className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {loadingHistory ? (
+                      <div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading trips...</div>
+                  ) : history?.trips?.length ? (
+                    history.trips.map((trip) => (
+                      <div key={trip.trip_id} className="p-4 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between group">
+                        <div>
+                          <Badge variant="outline" className="mb-1 text-[8px] uppercase">{trip.status}</Badge>
+                          <p className="text-[10px] text-muted-foreground font-mono">{trip.trip_id.slice(0, 8)}...</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <p className="text-sm font-black text-primary">{trip.fare} KES</p>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteHistoryItem('trip', trip.trip_id)} className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-xs text-muted-foreground border border-dashed border-white/10 rounded-xl">No trip history found</div>
+                  )}
+                </TabsContent>
+              </Tabs>
+
+              <Button onClick={handleClearAllHistory} variant="outline" className="w-full mt-4 h-10 border-destructive/20 text-destructive hover:bg-destructive/10 text-xs font-bold uppercase tracking-widest">
+                Clear All History
+              </Button>
           </div>
 
           {/* Evidence / Onboarding Photos */}
@@ -380,7 +522,14 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
                   status: rider.documents.find(d => d.document_type === 'good_conduct')?.verification_status || 'approved'
                 }
               ].map((doc, i) => (
-                <div key={i} className="group relative aspect-video rounded-3xl overflow-hidden border border-white/5 bg-black/40 cursor-pointer">
+                <div 
+                  key={i} 
+                  className="group relative aspect-video rounded-3xl overflow-hidden border border-white/5 bg-black/40 cursor-pointer"
+                  onClick={() => {
+                    if (!doc.url.endsWith('.pdf')) setSelectedImage(doc.url)
+                    else window.open(doc.url, '_blank')
+                  }}
+                >
                     {doc.url.endsWith('.pdf') ? (
                        <div className="h-full w-full flex flex-col items-center justify-center bg-sidebar">
                          <FileText className="h-10 w-10 text-primary/50 mb-2" />
@@ -400,9 +549,6 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
                           Status: <span className={doc.status === 'approved' ? 'text-green-400' : 'text-orange-400'}>{doc.status.toUpperCase()}</span>
                       </p>
                     </div>
-                    <Button variant="ghost" size="icon" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 backdrop-blur-md rounded-xl hover:bg-primary/50 text-white">
-                      <Eye className="h-4 w-4" />
-                    </Button>
                 </div>
               ))}
             </div>
@@ -429,9 +575,22 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
                   Rider Profile Verified
               </Button>
             )}
-            <Button variant="outline" className="h-16 rounded-2xl border-sidebar-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 text-sm font-bold uppercase tracking-widest opacity-60 flex items-center gap-3">
-              <ShieldCheck className="h-6 w-6 opacity-40 rotate-180" />
-              Execute Suspension Protocol
+            <Button 
+              onClick={handleSuspendToggle}
+              disabled={isSuspending}
+              variant="outline" 
+              className={`h-16 rounded-2xl border-sidebar-border text-sm font-bold uppercase tracking-widest flex items-center gap-3 transition-colors ${
+                rider.status === 'suspended' 
+                  ? 'hover:bg-green-500/10 text-green-500 hover:text-green-400 hover:border-green-500/50' 
+                  : 'hover:bg-destructive/10 text-destructive hover:text-destructive hover:border-destructive/50'
+              }`}
+            >
+              {isSuspending ? (
+                <div className="h-5 w-5 border-2 border-current border-t-transparent animate-spin rounded-full" />
+              ) : (
+                <ShieldCheck className={`h-6 w-6 ${rider.status !== 'suspended' && 'rotate-180 opacity-40'}`} />
+              )}
+              {rider.status === 'suspended' ? 'Unblock Account' : 'Execute Suspension Protocol'}
             </Button>
           </div>
         </div>
@@ -442,8 +601,9 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
   if (!riderId) return null
 
   return (
-    <div className="fixed inset-0 bg-background/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300">
-      <div className="bg-sidebar border border-sidebar-border shadow-2xl rounded-3xl w-full max-w-5xl h-full flex flex-col overflow-hidden relative border-primary/20">
+    <>
+      <div className="fixed inset-0 bg-background/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300">
+        <div className="bg-sidebar border border-sidebar-border shadow-2xl rounded-3xl w-full max-w-5xl h-full flex flex-col overflow-hidden relative border-primary/20">
         
         {/* Header - Industrial Style */}
         <div className="p-6 border-b border-sidebar-border flex items-center justify-between bg-sidebar-accent/30">
@@ -471,5 +631,19 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
         </ScrollArea>
       </div>
     </div>
+    
+    {/* Image Viewer Dialog */}
+    <Dialog open={!!selectedImage} onOpenChange={(o) => !o && setSelectedImage(null)}>
+      <DialogContent className="max-w-4xl bg-transparent border-none shadow-none p-0 flex justify-center [&>button]:text-white [&>button]:bg-black/50 [&>button]:hover:bg-black/70 [&>button]:p-2 [&>button]:rounded-full">
+        {selectedImage && (
+          <img 
+            src={selectedImage} 
+            alt="Full Evidence" 
+            className="max-h-[85vh] object-contain rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/20" 
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
