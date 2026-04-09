@@ -806,3 +806,41 @@ func HandleOCCGetRiderDetails(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ─────────────────────────────────────────────────
+// SECTION 10: SHOPS DIRECTORY
+// ─────────────────────────────────────────────────
+
+func HandleOCCGetShops(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		shops, err := repository.GetAllShops(db)
+		if err != nil {
+			http.Error(w, "Failed to fetch shops", http.StatusInternalServerError)
+			return
+		}
+		if shops == nil {
+			shops = []models.AdminShopView{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(shops)
+	}
+}
+
+func HandleOCCGetShopDetails(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		shopID := r.URL.Query().Get("id")
+		if shopID == "" {
+			http.Error(w, "Missing shop ID", http.StatusBadRequest)
+			return
+		}
+
+		detail, err := repository.GetShopDetails(db, shopID)
+		if err != nil {
+			log.Printf("⚠️ Error fetching shop details: %v", err)
+			http.Error(w, "Shop not found or database error", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(detail)
+	}
+}

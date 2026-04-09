@@ -534,3 +534,82 @@ func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, erro
 	return detail, nil
 }
 
+// ───────────────────────────────────────────────
+// SHOPS DIRECTORY (ADMIN)
+// ───────────────────────────────────────────────
+
+func GetAllShops(db *sql.DB) ([]models.AdminShopView, error) {
+	rows, err := db.Query(`
+		SELECT 
+			s.shop_id, s.seller_id, u.full_name, u.email, s.shop_name, s.shop_address,
+			COALESCE(ST_Y(s.shop_location::geometry), 0) as lat, 
+			COALESCE(ST_X(s.shop_location::geometry), 0) as lng,
+			(SELECT COUNT(*) FROM products p WHERE p.seller_id = s.seller_id AND p.is_active = true) as product_count
+		FROM shops s
+		JOIN users u ON s.seller_id = u.user_id
+		ORDER BY s.shop_name ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	shops := []models.AdminShopView{}
+	for rows.Next() {
+		var shop models.AdminShopView
+		if err := rows.Scan(
+			&shop.ShopID, &shop.SellerID, &shop.OwnerName, &shop.OwnerEmail, 
+			&shop.ShopName, &shop.ShopAddress, &shop.Lat, &shop.Lng, &shop.ProductCount,
+		); err == nil {
+			shops = append(shops, shop)
+		}
+	}
+	return shops, nil
+}
+
+func GetShopDetails(db *sql.DB, shopID string) (models.AdminShopDetailView, error) {
+	var detail models.AdminShopDetailView
+
+	// 1. Fetch Shop & Owner details
+	err := db.QueryRow(`
+		SELECT 
+			s.shop_id, s.seller_id, u.full_name, u.email, s.shop_name, s.shop_address,
+			COALESCE(ST_Y(s.shop_location::geometry), 0) as lat, 
+			COALESCE(ST_X(s.shop_location::geometry), 0) as lng
+		FROM shops s
+		JOIN users u ON s.seller_id = u.user_id
+		WHERE s.shop_id = $1
+	`, shopID).Scan(
+		&detail.Shop.ShopID, &detail.Shop.SellerID, &detail.Shop.OwnerName, &detail.Shop.OwnerEmail,
+		&detail.Shop.ShopName, &detail.Shop.ShopAddress, &detail.Shop.Lat, &detail.Shop.Lng,
+	)
+	if err != nil {
+		return detail, err
+	}
+
+	// 2. Fetch Products
+	rows, err := db.Query(`
+		SELECT product_id, seller_id, category_id, title, price, currency, image_url, stock_count
+		FROM products
+		WHERE seller_id = $1 AND is_active = true
+	`, detail.Shop.SellerID)
+	
+	if err == nil {
+		defer rows.Close()
+		detail.Products = []models.Product{}
+		for rows.Next() {
+			var p models.Product
+			// Assign shopID directly to the product since it's missing from DB query if shop_id is not explicitly saved per product
+			p.ShopID = detail.Shop.ShopID 
+			
+			if err := rows.Scan(
+				&p.ProductID, &p.SellerID, &p.CategoryID, &p.Title, &p.Price, &p.Currency, &p.ImageURL, &p.StockCount,
+			); err == nil {
+				detail.Products = append(detail.Products, p)
+			}
+		}
+	}
+	detail.Shop.ProductCount = len(detail.Products)
+
+	return detail, nil
+}

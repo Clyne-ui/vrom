@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Map, Users, DollarSign, AlertTriangle,
   BarChart3, Settings, LogOut, Menu, X, Power, Globe,
-  ShieldCheck, Lock, UserCog,
+  ShieldCheck, Lock, UserCog, Store, Shield, HelpCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/lib/contexts/user-context'
@@ -21,6 +21,9 @@ const NAV_ITEMS = [
   { icon: AlertTriangle, label: 'Security', href: '/dashboard/security', roles: ['super_admin', 'regional_admin'] },
   { icon: BarChart3, label: 'Analytics', href: '/dashboard/analytics', roles: ['super_admin', 'regional_admin', 'operator'] },
   { icon: Globe, label: 'Regional Management', href: '/dashboard/regions', roles: ['super_admin'] },
+  { icon: Store, label: 'Shops & Sellers', href: '/dashboard/shops', roles: ['super_admin', 'regional_admin', 'operator'] },
+  { icon: Shield, label: 'Moderation', href: '/dashboard/moderation', roles: ['super_admin', 'regional_admin', 'operator'] },
+  { icon: HelpCircle, label: 'Disputes', href: '/dashboard/disputes', roles: ['super_admin', 'regional_admin', 'operator'] },
   { icon: UserCog, label: 'Admin Management', href: '/dashboard/admin-management', roles: ['super_admin'] },
   { icon: Settings, label: 'Settings', href: '/dashboard/settings', roles: ['super_admin', 'regional_admin'] },
 ]

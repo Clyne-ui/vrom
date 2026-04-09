@@ -226,6 +226,10 @@ func main() {
 	mux.HandleFunc("/occ/content/approve", middleware.AdminOnly(db, vrom_http.HandleOCCApproveContent(db)))
 	mux.HandleFunc("/occ/content/reject", middleware.AdminOnly(db, vrom_http.HandleOCCRejectContent(db)))
 
+	// Shops Directory
+	mux.HandleFunc("/occ/shops", middleware.AdminOnly(db, vrom_http.HandleOCCGetShops(db)))
+	mux.HandleFunc("/occ/shops/details", middleware.AdminOnly(db, vrom_http.HandleOCCGetShopDetails(db)))
+
 	// --- 8. STATIC DASHBOARD ---
 	fs := http.FileServer(http.Dir("./public"))
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", fs))

@@ -309,3 +309,22 @@ type RiderFullDetail struct {
 	Documents       []RiderDocument `json:"documents"`
 	CurrentTrip     *TripSummary    `json:"current_trip,omitempty"`
 }
+
+// AdminShopView represents a shop with owner details for the admin.
+type AdminShopView struct {
+	ShopID      string  `json:"shop_id"`
+	SellerID    string  `json:"seller_id"`
+	OwnerName   string  `json:"owner_name"`
+	OwnerEmail  string  `json:"owner_email"`
+	ShopName    string  `json:"shop_name"`
+	ShopAddress string  `json:"shop_address"`
+	Lat         float64 `json:"lat"`
+	Lng         float64 `json:"lng"`
+	ProductCount int    `json:"product_count"`
+}
+
+// AdminShopDetailView represents the full drill-down for a shop.
+type AdminShopDetailView struct {
+	Shop     AdminShopView `json:"shop"`
+	Products []Product     `json:"products"`
+}
