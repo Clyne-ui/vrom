@@ -16,6 +16,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from "@/components/ui/dialog"
 import {
   Tabs,
@@ -635,6 +636,7 @@ export function RiderDetailsDrawer({ riderId, onClose }: RiderDetailsDrawerProps
     {/* Image Viewer Dialog */}
     <Dialog open={!!selectedImage} onOpenChange={(o) => !o && setSelectedImage(null)}>
       <DialogContent className="max-w-4xl bg-transparent border-none shadow-none p-0 flex justify-center [&>button]:text-white [&>button]:bg-black/50 [&>button]:hover:bg-black/70 [&>button]:p-2 [&>button]:rounded-full">
+        <DialogTitle className="sr-only">Verification Evidence</DialogTitle>
         {selectedImage && (
           <img 
             src={selectedImage} 
