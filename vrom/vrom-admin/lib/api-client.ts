@@ -1,118 +1,140 @@
-// Configure your Go backend URL here
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
+const request = async (path: string, options: RequestInit = {}) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('vrom_session_token') : null
+  const headers = {
+    ...options.headers,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  }
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    let errorData
+    try {
+      errorData = JSON.parse(text)
+    } catch {
+      errorData = { message: text || res.statusText }
+    }
+    throw new Error(errorData.message || 'API Request Failed')
+  }
+
+  const contentType = res.headers.get('content-type')
+  if (contentType && contentType.includes('application/json')) {
+    return res.json()
+  }
+  return res.text()
+}
+
 export const apiClient = {
+  // Generic helpers
+  get: (path: string) => request(path),
+  post: (path: string, body: any) => request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }),
+  put: (path: string, body: any) => request(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }),
+  delete: (path: string) => request(path, { method: 'DELETE' }),
+
   // Auth endpoints
   login: async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    return request('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
-      credentials: 'include',
     })
-    return res.json()
   },
 
   logout: async () => {
-    await fetch(`${API_BASE_URL}/api/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-    })
+    return request('/logout', { method: 'POST' })
   },
 
   me: async () => {
-    const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      credentials: 'include',
-    })
-    return res.json()
+    return request('/profile')
   },
 
   // CRM endpoints
   searchUsers: async (query: string, type?: string) => {
     const params = new URLSearchParams({ q: query })
-    if (type) params.append('type', type)
-    
-    const res = await fetch(`${API_BASE_URL}/api/crm/search?${params}`, {
-      credentials: 'include',
-    })
-    return res.json()
+    if (type) params.append('role', type)
+    return request(`/occ/crm/search?${params}`)
   },
 
   getUser: async (id: string) => {
-    const res = await fetch(`${API_BASE_URL}/api/crm/users/${id}`, {
-      credentials: 'include',
-    })
-    return res.json()
+    return request(`/occ/crm/history?user_id=${id}`)
   },
 
-  updateUser: async (id: string, data: any) => {
-    const res = await fetch(`${API_BASE_URL}/api/crm/users/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-      credentials: 'include',
-    })
-    return res.json()
-  },
-
-  // Financials endpoints
-  getFinancials: async () => {
-    const res = await fetch(`${API_BASE_URL}/api/financials`, {
-      credentials: 'include',
-    })
-    return res.json()
-  },
-
-  // Map endpoints
-  getFleetLocations: async () => {
-    const res = await fetch(`${API_BASE_URL}/api/map/fleet`, {
-      credentials: 'include',
-    })
-    return res.json()
-  },
-
-  // Security endpoints
-  getAuditLog: async (limit?: number) => {
-    const params = new URLSearchParams()
-    if (limit) params.append('limit', limit.toString())
-    
-    const res = await fetch(`${API_BASE_URL}/api/security/audit-log?${params}`, {
-      credentials: 'include',
-    })
-    return res.json()
-  },
-
-  triggerMaintenance: async (enabled: boolean) => {
-    const res = await fetch(`${API_BASE_URL}/api/admin/maintenance`, {
+  deleteUser: async (id: string) => {
+    return request('/occ/admin/delete-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-      credentials: 'include',
+      body: JSON.stringify({ user_id: id })
     })
-    return res.json()
   },
 
-  // Analytics endpoints
-  getAnalytics: async (range?: string) => {
-    const params = new URLSearchParams()
-    if (range) params.append('range', range)
-    
-    const res = await fetch(`${API_BASE_URL}/api/analytics?${params}`, {
-      credentials: 'include',
+  // Moderation
+  getPendingRiders: async () => {
+    return request('/admin/riders/pending')
+  },
+
+  approveRider: async (userId: string, region: string) => {
+    return request('/admin/riders/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, region })
     })
-    return res.json()
+  },
+
+  rejectRider: async (userId: string, reason: string) => {
+    return request('/admin/riders/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, reason })
+    })
+  },
+
+  // Financials
+  getFinancials: async () => {
+    return request('/occ/analytics/financials')
+  },
+
+  // Map
+  getFleetLocations: async () => {
+    return request('/occ/fleet/live')
+  },
+
+  // Security
+  getAuditLog: async (page: number = 1) => {
+    return request(`/occ/audit/log?page=${page}`)
+  },
+
+  triggerMaintenance: async (active: boolean) => {
+    return request('/occ/admin/maintenance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active }),
+    })
   },
 
   // Real-time stream helper
   streamFinancials: (callback: (data: any) => void) => {
-    const eventSource = new EventSource(`${API_BASE_URL}/api/stream/financials`, {
+    const eventSource = new EventSource(`${API_BASE_URL}/occ/stream/financials`, {
       withCredentials: true,
     })
-    
+
     eventSource.onmessage = (event) => {
       callback(JSON.parse(event.data))
     }
-    
+
     return () => eventSource.close()
   },
 }

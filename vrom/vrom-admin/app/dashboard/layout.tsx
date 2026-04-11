@@ -5,6 +5,8 @@ import { Header } from '@/components/dashboard/header'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { apiClient } from '@/lib/api-client'
+
 export default function DashboardLayout({
   children,
 }: {
@@ -20,7 +22,7 @@ export default function DashboardLayout({
       try {
         const userSession = localStorage.getItem('vrom_user')
         const sessionToken = localStorage.getItem('vrom_session_token')
-        
+
         if (!userSession || !sessionToken) {
           router.push('/login')
           setIsLoading(false)
@@ -28,22 +30,12 @@ export default function DashboardLayout({
         }
 
         // Verify with real backend
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profile`, {
-          headers: {
-            'Authorization': `Bearer ${sessionToken}`
-          }
-        })
-        
-        if (response.ok) {
-          setIsAuthenticated(true)
-        } else {
-          // Token expired or invalid
-          localStorage.removeItem('vrom_user')
-          localStorage.removeItem('vrom_session_token')
-          router.push('/login')
-        }
+        await apiClient.me()
+        setIsAuthenticated(true)
       } catch (err) {
         console.error('Auth verification failed:', err)
+        localStorage.removeItem('vrom_user')
+        localStorage.removeItem('vrom_session_token')
         router.push('/login')
       } finally {
         setIsLoading(false)

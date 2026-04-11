@@ -34,27 +34,22 @@ export default function LoginPage() {
     setIsLoading(true)
     setError('')
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoUser.email, password: 'password123' }),
-      })
-      
-      const data = await res.json()
-      if (res.ok && data.access_token) {
+      const data = await apiClient.login(demoUser.email, 'password123')
+
+      if (data.access_token) {
         const assignedRegion = data.user.role === 'admin' ? 'global' : (data.user.assigned_region || demoUser.region)
         const user = {
           id: data.user.user_id,
           email: data.user.email,
           name: data.user.full_name,
-          role: data.user.role === 'admin' ? 'super_admin' : 'regional_admin',
+          role: (data.user.role === 'admin' ? 'super_admin' : 'regional_admin') as UserRole,
           region: assignedRegion,
-          regions: data.user.role === 'admin' 
-            ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania'] 
+          regions: data.user.role === 'admin'
+            ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania']
             : [assignedRegion],
           loginTime: new Date().toISOString()
         }
-        
+
         localStorage.setItem('vrom_session_token', data.access_token)
         if (data.refresh_token) localStorage.setItem('vrom_refresh_token', data.refresh_token)
         setUser(user, data.access_token, data.refresh_token)
@@ -62,8 +57,8 @@ export default function LoginPage() {
       } else {
         setError(data.message || 'Quick login failed')
       }
-    } catch (err) {
-      setError('Connection to backend failed')
+    } catch (err: any) {
+      setError(err.message || 'Connection to backend failed')
     } finally {
       setIsLoading(false)
     }
@@ -75,28 +70,22 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
+      const data = await apiClient.login(email, password)
 
-      const data = await res.json()
-      
-      if (res.ok && data.access_token) {
+      if (data.access_token) {
         const assignedRegion = data.user.role === 'admin' ? 'global' : (data.user.assigned_region || selectedRegion)
         const user = {
           id: data.user.user_id,
           email: data.user.email,
           name: data.user.full_name,
-          role: data.user.role === 'admin' ? 'super_admin' : 'regional_admin',
+          role: (data.user.role === 'admin' ? 'super_admin' : 'regional_admin') as UserRole,
           region: assignedRegion,
           regions: data.user.role === 'admin'
             ? ['global', 'kenya', 'nigeria', 'uganda', 'tanzania']
             : [assignedRegion],
           loginTime: new Date().toISOString()
         }
-        
+
         localStorage.setItem('vrom_session_token', data.access_token)
         if (data.refresh_token) localStorage.setItem('vrom_refresh_token', data.refresh_token)
         setUser(user, data.access_token, data.refresh_token)
@@ -104,8 +93,8 @@ export default function LoginPage() {
       } else {
         setError(data.message || 'Invalid email or password')
       }
-    } catch (err) {
-      setError('Connection to backend failed. Please ensure the backend is running.')
+    } catch (err: any) {
+      setError(err.message || 'Connection to backend failed. Please ensure the backend is running.')
     } finally {
       setIsLoading(false)
     }
@@ -117,7 +106,7 @@ export default function LoginPage() {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <img 
+            <img
               src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Vrom%20logo%20transparen-hs31Teidv5LhajHyiL3YSpt6yTesQe.png"
               alt="Vrom Logo"
               className="h-12 w-auto"

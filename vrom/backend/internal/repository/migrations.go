@@ -57,13 +57,42 @@ func InitDatabase(db *sql.DB) {
 	// 4. Trips Table enhancements (OTP)
 	_, _ = db.Exec("ALTER TABLE trips ADD COLUMN IF NOT EXISTS delivery_otp CHAR(4)")
 
-	// 5. Update order_status ENUM to include 'pending_payment'
-	// Note: Postgres doesn't support IF NOT EXISTS for ADD VALUE easily in a single line,
-	// so we use a small block to check first.
+	// 5. Update order_status ENUM to include missing statuses
 	_, _ = db.Exec(`
 		DO $$ BEGIN
+			-- Common across orders and trips
 			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'pending_payment') THEN
 				ALTER TYPE order_status ADD VALUE 'pending_payment';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'rejected') THEN
+				ALTER TYPE order_status ADD VALUE 'rejected';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'cancelled') THEN
+				ALTER TYPE order_status ADD VALUE 'cancelled';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'completed') THEN
+				ALTER TYPE order_status ADD VALUE 'completed';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'delivered') THEN
+				ALTER TYPE order_status ADD VALUE 'delivered';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'in_progress') THEN
+				ALTER TYPE order_status ADD VALUE 'in_progress';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'accepted') THEN
+				ALTER TYPE order_status ADD VALUE 'accepted';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'picked_up') THEN
+				ALTER TYPE order_status ADD VALUE 'picked_up';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'disputed') THEN
+				ALTER TYPE order_status ADD VALUE 'disputed';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'paid_escrow') THEN
+				ALTER TYPE order_status ADD VALUE 'paid_escrow';
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname = 'order_status' AND e.enumlabel = 'seller_approved') THEN
+				ALTER TYPE order_status ADD VALUE 'seller_approved';
 			END IF;
 		END $$;`)
 

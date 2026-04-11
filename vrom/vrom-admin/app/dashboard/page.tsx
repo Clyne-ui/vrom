@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
-import { TrendingUp, TrendingDown, Users, Zap, AlertCircle, Eye, MapPin, Wallet, Globe, Car, Clock } from 'lucide-react'
+import { TrendingUp, TrendingDown, Users, Zap, AlertCircle, Eye, MapPin, Wallet, Globe, Car, Clock, Package } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
 import { useOCCWebSocket } from '@/lib/hooks/use-occ-websocket'
 import { REGIONS } from '@/lib/regions'
 import { useRouter } from 'next/navigation'
 import { RegionCode } from '@/lib/types'
+import { apiClient } from '@/lib/api-client'
 
 interface KPICard {
   slug: string
@@ -24,8 +25,8 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'gmv',
     title: 'Gross Merchandise Value',
-    getValue: (data) => `$${(data?.financials?.total_gmv || 0).toLocaleString()}`,
-    sub: (data) => `${data?.financials?.total_orders || 0} orders this month`,
+    getValue: (data) => `KES ${(data?.financials?.gmv || 0).toLocaleString()}`,
+    sub: (data) => `${data?.financials?.total_orders || 0} orders overall`,
     trend: 8.2,
     icon: Wallet,
     iconBg: 'bg-primary/10',
@@ -34,8 +35,8 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'commission',
     title: 'Platform Commission',
-    getValue: (data) => `$${(data?.financials?.total_commission || 0).toLocaleString()}`,
-    sub: () => '12% avg. commission rate',
+    getValue: (data) => `KES ${(data?.financials?.commission || 0).toLocaleString()}`,
+    sub: () => 'Avg. active commission rate',
     trend: 5.1,
     icon: Zap,
     iconBg: 'bg-green-500/10',
@@ -44,7 +45,7 @@ const KPI_CARDS: KPICard[] = [
   {
     slug: 'escrow',
     title: 'Escrow In-Flight',
-    getValue: (data) => `$${(data?.financials?.escrow_in_flight || 0).toLocaleString()}`,
+    getValue: (data) => `KES ${(data?.financials?.escrow_in_flight || 0).toLocaleString()}`,
     sub: () => 'Pending disbursements',
     trend: 0.4,
     icon: Eye,
@@ -57,15 +58,15 @@ const KPI_CARDS: KPICard[] = [
     getValue: (data) => (data?.financials?.total_orders || 0).toLocaleString(),
     sub: () => 'Real-time tracking enabled',
     trend: 3.2,
-    icon: Zap,
+    icon: Package,
     iconBg: 'bg-blue-500/10',
     iconColor: 'text-blue-500',
   },
   {
     slug: 'drivers',
-    title: 'Active Drivers',
+    title: 'Registered Drivers',
     getValue: (data) => (data?.financials?.total_drivers || 0).toLocaleString(),
-    sub: () => '+12 new drivers today',
+    sub: () => 'Active network supply',
     trend: 2.8,
     icon: Car,
     iconBg: 'bg-orange-500/10',
@@ -73,9 +74,9 @@ const KPI_CARDS: KPICard[] = [
   },
   {
     slug: 'delivery',
-    title: 'Avg. Delivery Time',
-    getValue: () => '24.3m',
-    sub: () => '-2.3% from target — great!',
+    title: 'Pending Trips View',
+    getValue: (data) => (data?.financials?.pending_trips || 0).toLocaleString(),
+    sub: (data) => `${data?.financials?.completed_trips || 0} Trips Completed`,
     trend: -2.3,
     icon: Clock,
     iconBg: 'bg-purple-500/10',
@@ -94,14 +95,8 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('vrom_session_token')
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/analytics/financials`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        if (response.ok) {
-          const data = await response.json()
-          setStats(data)
-        }
+        const data = await apiClient.getFinancials()
+        setStats(data)
       } catch (err) {
         console.error('Failed to fetch stats:', err)
       } finally {
@@ -125,16 +120,18 @@ export default function DashboardPage() {
     }
   }, [wsData])
 
-  const recentActivity = [
-    { type: 'order', msg: `New order placed in ${regionInfo?.name || 'Nairobi'} — #ORD${Math.floor(Math.random() * 90000 + 10000)}`, time: '2 min ago' },
-    { type: 'driver', msg: 'New driver onboarded — License verified ✓', time: '5 min ago' },
-    { type: 'payment', msg: `Payment processed — $${(Math.random() * 3000 + 500).toFixed(0)}`, time: '12 min ago' },
-    { type: 'alert', msg: `High demand detected in ${regionInfo?.name || 'Downtown'} zone`, time: '18 min ago' },
-    { type: 'order', msg: 'Order #ORD45673 — Delivered successfully', time: '24 min ago' },
-  ]
+  const Package = Zap // Reusing icon temporarily mapping.
+
+  // Safe Fallbacks in case stats isn't loaded or fully formed yet
+  const orderVolume = stats?.order_volume || []
+  const maxVolume = orderVolume.length > 0 ? Math.max(...orderVolume.map((v: any) => v.volume)) : 1
+
+  const revenuePct = stats?.revenue_pct || []
+  const regionsGMV = stats?.regions || []
+  const recentActivity = stats?.recent_activity || []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -175,38 +172,29 @@ export default function DashboardPage() {
                       {card.title}
                     </p>
                     <div className="h-9 mt-2">
-                       {isLoading ? (
-                         <div className="h-8 w-24 bg-muted animate-pulse rounded" />
-                       ) : (
-                         <p className="text-3xl font-bold text-foreground">
-                            {card.getValue(stats)}
-                         </p>
-                       )}
+                      {isLoading ? (
+                        <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                      ) : (
+                        <p className="text-3xl font-bold text-foreground truncate">
+                          {card.getValue(stats)}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 mt-2">
-                      {isNeg
-                        ? <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-                        : <TrendingUp className="h-3.5 w-3.5 text-green-500" />
-                      }
-                      <span className={`text-xs font-semibold ${isNeg ? 'text-red-500' : 'text-green-500'}`}>
-                        {isNeg ? '' : '+'}{card.trend}%
-                      </span>
+                      <TrendingUp className="h-3.5 w-3.5 text-primary opacity-50" />
                       <span className="text-xs text-muted-foreground">vs last period</span>
                     </div>
                     <div className="h-4 mt-2">
-                       {isLoading ? (
-                         <div className="h-3 w-32 bg-muted animate-pulse rounded" />
-                       ) : (
-                         <p className="text-xs text-muted-foreground">{card.sub(stats)}</p>
-                       )}
+                      {isLoading ? (
+                        <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{card.sub(stats)}</p>
+                      )}
                     </div>
                   </div>
                   <div className={`p-3 rounded-xl ${card.iconBg} group-hover:scale-110 transition-transform`}>
                     <Icon className={`h-6 w-6 ${card.iconColor}`} />
                   </div>
-                </div>
-                <div className="mt-4 pt-3 border-t border-border">
-                  <span className="text-xs text-primary font-medium group-hover:underline">View full details →</span>
                 </div>
               </Card>
             )
@@ -217,42 +205,64 @@ export default function DashboardPage() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Order Volume Trend */}
-        <Card className="p-6 glass-dark">
+        <Card className="p-6 glass-dark flex flex-col justify-between">
           <h3 className="font-semibold text-foreground mb-4">Order Volume (Last 24 Hours)</h3>
-          <div className="h-40 flex items-end gap-1">
-            {Array.from({ length: 24 }).map((_, i) => (
-              <div key={i} className="flex-1 bg-primary/25 hover:bg-primary/50 rounded-t transition-colors cursor-pointer"
-                style={{ height: `${20 + Math.abs(Math.sin(i * 0.8) * 75 + Math.random() * 15)}%`, minHeight: '8px' }}
-                title={`${i}:00`}
-              />
-            ))}
-          </div>
-          <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>00:00</span><span>12:00</span><span>23:59</span>
-          </div>
+          {isLoading ? (
+            <div className="h-40 flex items-end gap-1 animate-pulse opacity-50">
+              {Array.from({ length: 24 }).map((_, i) => (
+                <div key={i} className="flex-1 bg-primary/20 rounded-t" style={{ height: '30%' }} />
+              ))}
+            </div>
+          ) : orderVolume.length > 0 ? (
+            <>
+              <div className="h-40 flex items-end gap-1">
+                {orderVolume.map((dataPt: any, i: number) => {
+                  const pct = maxVolume > 0 ? (dataPt.volume / maxVolume) * 100 : 0
+                  return (
+                    <div key={i} className="flex-1 bg-primary/25 hover:bg-primary/50 rounded-t transition-colors cursor-pointer relative group"
+                      style={{ height: `${Math.max(pct, 5)}%` }} // minimum 5% height so it's visible
+                    >
+                      {/* Tooltip */}
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap pointer-events-none z-10 font-mono">
+                        {dataPt.hour}: {dataPt.volume} Orders
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex justify-between text-[10px] uppercase font-bold text-muted-foreground mt-3 tracking-widest px-1 border-t border-border pt-2">
+                <span>24H Ago</span><span>Live</span>
+              </div>
+            </>
+          ) : (
+            <div className="h-40 flex items-center justify-center text-sm text-muted-foreground border-2 border-dashed border-border rounded-xl">
+              No order volume recorded in the last 24h
+            </div>
+          )}
         </Card>
 
         {/* Revenue Breakdown */}
         <Card className="p-6 glass-dark">
-          <h3 className="font-semibold text-foreground mb-4">Revenue Breakdown</h3>
-          <div className="space-y-3.5">
-            {[
-              { label: 'Delivery Fees', pct: 45, color: 'bg-primary' },
-              { label: 'Service Tax', pct: 30, color: 'bg-blue-500' },
-              { label: 'Premium Services', pct: 15, color: 'bg-green-500' },
-              { label: 'Other', pct: 10, color: 'bg-yellow-500' },
-            ].map(item => (
-              <div key={item.label}>
-                <div className="flex justify-between mb-1.5">
-                  <span className="text-sm text-foreground">{item.label}</span>
-                  <span className="text-sm font-semibold text-foreground">{item.pct}%</span>
+          <h3 className="font-semibold text-foreground mb-4">Revenue Generation Blueprint</h3>
+          {isLoading ? (
+            <div className="space-y-4 animate-pulse opacity-50">
+              {[1, 2, 3, 4].map(i => <div key={i} className="h-8 bg-muted rounded" />)}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {revenuePct.map((item: any) => (
+                <div key={item.label}>
+                  <div className="flex justify-between mb-1.5">
+                    <span className="text-sm text-foreground font-mono">{item.label}</span>
+                    <span className="text-sm font-semibold text-foreground">{item.pct}%</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full ${item.color} rounded-full transition-all`} style={{ width: `${item.pct}%` }} />
+                  </div>
                 </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div className={`h-full ${item.color} rounded-full transition-all`} style={{ width: `${item.pct}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 
@@ -262,38 +272,59 @@ export default function DashboardPage() {
           <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
             <Globe className="h-4 w-4 text-primary" /> Regions Overview
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            {[
-              { label: 'Nairobi, Kenya', gmv: '284K', flag: '🇰🇪', status: 'active' },
-              { label: 'Lagos, Nigeria', gmv: '756K', flag: '🇳🇬', status: 'active' },
-              { label: 'Kampala, Uganda', gmv: '89K', flag: '🇺🇬', status: 'active' },
-              { label: 'Dar es Salaam', gmv: '156K', flag: '🇹🇿', status: 'active' },
-            ].map(r => (
-              <div key={r.label} className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                <span className="text-xl">{r.flag}</span>
-                <div>
-                  <p className="font-medium text-foreground text-xs">{r.label}</p>
-                  <p className="text-primary font-bold">${r.gmv}</p>
+          {isLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse opacity-50">
+              {[1, 2, 3, 4].map(i => <div key={i} className="h-14 bg-muted rounded-xl" />)}
+            </div>
+          ) : regionsGMV.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              {regionsGMV.map((r: any) => (
+                <div key={r.label} className="flex items-center gap-3 p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors border border-border/50">
+                  <span className="text-2xl">{r.flag}</span>
+                  <div>
+                    <p className="font-bold text-foreground text-xs uppercase tracking-widest">{r.label}</p>
+                    <p className="text-primary font-black mt-1">KES {r.gmv.toLocaleString()}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center p-4 text-xs text-muted-foreground border border-dashed border-border rounded-xl">No active regional logic found</div>
+          )}
         </Card>
       )}
 
       {/* Recent Activity */}
       <Card className="p-6 glass-dark">
-        <h3 className="font-semibold text-foreground mb-4">Recent Activity</h3>
-        <div className="space-y-2">
-          {recentActivity.map((item, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-              <div className={`h-2 w-2 rounded-full flex-shrink-0 ${item.type === 'alert' ? 'bg-yellow-400' : item.type === 'payment' ? 'bg-green-400' : 'bg-primary'
-                }`} />
-              <p className="text-sm text-foreground flex-1 truncate">{item.msg}</p>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{item.time}</span>
-            </div>
-          ))}
-        </div>
+        <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-primary" /> System Intelligence Feed
+        </h3>
+        {isLoading ? (
+          <div className="space-y-3 animate-pulse opacity-50">
+            {[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted rounded-xl" />)}
+          </div>
+        ) : recentActivity.length > 0 ? (
+          <div className="space-y-3">
+            {recentActivity.map((item: any, i: number) => (
+              <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-muted/20 hover:bg-muted/40 transition-colors border border-white/5">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className={`h-3 w-3 rounded-full flex-shrink-0 shadow-[0_0_10px_currentColor] ${item.type === 'alert' ? 'text-yellow-400 bg-yellow-400'
+                    : item.type === 'payment' ? 'text-green-400 bg-green-400'
+                      : item.type === 'driver' ? 'text-orange-400 bg-orange-400'
+                        : 'text-primary bg-primary'
+                    }`} />
+                  <p className="text-sm text-foreground font-medium flex-1">{item.msg}</p>
+                </div>
+                <span className="text-xs text-muted-foreground font-mono bg-black/20 px-2 py-1 rounded w-fit">{item.time}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center p-8 text-xs text-muted-foreground border border-dashed border-border rounded-xl flex flex-col items-center">
+            <Clock className="h-8 w-8 mb-2 opacity-20" />
+            Awaiting System Events...
+          </div>
+        )}
       </Card>
     </div>
   )

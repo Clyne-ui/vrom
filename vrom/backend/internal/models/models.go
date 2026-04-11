@@ -125,6 +125,40 @@ type OCCFinancials struct {
 	CompletedSales int `json:"completed_sales"`
 	PendingTrips   int `json:"pending_trips"`
 	CompletedTrips int `json:"completed_trips"`
+	TotalDrivers   int `json:"total_drivers"`
+}
+
+type OrderVolume struct {
+	Hour   string `json:"hour"`
+	Volume int    `json:"volume"`
+}
+
+type RevenuePct struct {
+	Label string `json:"label"`
+	Pct   int    `json:"pct"`
+	Color string `json:"color"`
+}
+
+type RegionGMV struct {
+	Label  string  `json:"label"`
+	GMV    float64 `json:"gmv"`
+	Flag   string  `json:"flag"`
+	Status string  `json:"status"`
+}
+
+type RecentActivity struct {
+	Type string `json:"type"`
+	Msg  string `json:"msg"`
+	Time string `json:"time"`
+}
+
+type DashboardData struct {
+	Financials  OCCFinancials    `json:"financials"`
+	Revenue     RevenueBreakdown `json:"revenue"`
+	OrderVolume []OrderVolume    `json:"order_volume"`
+	RevenuePct  []RevenuePct     `json:"revenue_pct"`
+	Regions     []RegionGMV      `json:"regions"`
+	RecentAct   []RecentActivity `json:"recent_activity"`
 }
 
 type RevenueBreakdown struct {

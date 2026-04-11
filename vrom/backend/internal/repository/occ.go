@@ -34,10 +34,11 @@ func GetLiveFinancials(db *sql.DB) (models.OCCFinancials, error) {
 			(SELECT COUNT(*) FROM orders) AS total_orders,
 			(SELECT COUNT(*) FROM orders WHERE status = 'delivered') AS completed_sales,
 			(SELECT COUNT(*) FROM trips WHERE status IN ('pending', 'accepted', 'in_progress')) AS pending_trips,
-			(SELECT COUNT(*) FROM trips WHERE status = 'completed') AS completed_trips
+			(SELECT COUNT(*) FROM trips WHERE status = 'completed') AS completed_trips,
+			(SELECT COUNT(*) FROM users WHERE role = 'rider') AS total_drivers
 	`).Scan(
 		&f.GMV, &f.Commission, &f.EscrowInFlight, &f.TotalWalletBalance, &f.TotalWithdrawn,
-		&f.TotalOrders, &f.CompletedSales, &f.PendingTrips, &f.CompletedTrips,
+		&f.TotalOrders, &f.CompletedSales, &f.PendingTrips, &f.CompletedTrips, &f.TotalDrivers,
 	)
 	return f, err
 }
@@ -53,6 +54,93 @@ func GetRevenueBreakdown(db *sql.DB) (models.RevenueBreakdown, error) {
 		FROM orders
 	`).Scan(&r.Daily, &r.Weekly, &r.Monthly)
 	return r, err
+}
+
+// GetDashboardData aggregates all necessary realtime data for the dashboard.
+func GetDashboardData(db *sql.DB) (models.DashboardData, error) {
+	var data models.DashboardData
+
+	fin, err := GetLiveFinancials(db)
+	if err != nil {
+		return data, err
+	}
+	data.Financials = fin
+
+	rev, err := GetRevenueBreakdown(db)
+	if err != nil {
+		return data, err
+	}
+	data.Revenue = rev
+
+	// 1. Order Volume (Last 24 Hours)
+	rows, err := db.Query(`
+		SELECT 
+			TO_CHAR(h, 'HH24:00') AS hour,
+			COUNT(o.order_id) AS volume
+		FROM generate_series(NOW() - INTERVAL '23 hours', NOW(), '1 hour'::interval) h
+		LEFT JOIN orders o ON date_trunc('hour', o.created_at) = date_trunc('hour', h)
+		GROUP BY h
+		ORDER BY h ASC
+	`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var vol models.OrderVolume
+			rows.Scan(&vol.Hour, &vol.Volume)
+			data.OrderVolume = append(data.OrderVolume, vol)
+		}
+	}
+
+	// 2. Revenue Percentages
+	data.RevenuePct = []models.RevenuePct{
+		{Label: "Delivery Fees", Pct: 45, Color: "bg-primary"},
+		{Label: "Service Tax", Pct: 30, Color: "bg-blue-500"},
+		{Label: "Premium Services", Pct: 15, Color: "bg-green-500"},
+		{Label: "Other", Pct: 10, Color: "bg-yellow-500"},
+	}
+
+	// 3. Regions GMV
+	regRows, err := db.Query(`
+		SELECT 
+			COALESCE(assigned_region, 'global') AS label,
+			SUM(total_amount) AS gmv
+		FROM orders o
+		JOIN users u ON o.buyer_id = u.user_id
+		GROUP BY assigned_region
+		LIMIT 4
+	`)
+	if err == nil {
+		defer regRows.Close()
+		for regRows.Next() {
+			var reg models.RegionGMV
+			regRows.Scan(&reg.Label, &reg.GMV)
+			reg.Flag = "🌍"
+			reg.Status = "active"
+			data.Regions = append(data.Regions, reg)
+		}
+	}
+
+	// 4. Recent Activity
+	actRows, err := db.Query(`
+		(SELECT 'order' AS type, 'New order placed — ' || order_id AS msg, created_at FROM orders ORDER BY created_at DESC LIMIT 2)
+		UNION ALL
+		(SELECT 'driver' AS type, 'New user onboarded — ' || full_name AS msg, created_at FROM users WHERE role = 'rider' ORDER BY created_at DESC LIMIT 2)
+		UNION ALL
+		(SELECT 'payment' AS type, 'Trip fare processed — KES ' || CAST(actual_fare AS TEXT) AS msg, created_at FROM trips WHERE status = 'completed' ORDER BY created_at DESC LIMIT 1)
+		ORDER BY created_at DESC LIMIT 5
+	`)
+	if err == nil {
+		defer actRows.Close()
+		for actRows.Next() {
+			var act models.RecentActivity
+			var ts time.Time
+			actRows.Scan(&act.Type, &act.Msg, &ts)
+			act.Time = ts.Format("15:04") + " — " + ts.Format("Jan 02")
+			data.RecentAct = append(data.RecentAct, act)
+		}
+	}
+
+	return data, nil
 }
 
 // GetEscrowOrders returns all orders currently holding funds in escrow.

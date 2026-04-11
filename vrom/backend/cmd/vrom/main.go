@@ -11,6 +11,7 @@ import (
 	"vrom-backend/internal/events"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
+
 	"github.com/joho/godotenv"
 )
 
@@ -100,7 +101,7 @@ func main() {
 	mux.HandleFunc("/wallet/deposit", middleware.RequireRole(db, []string{"customer"}, vrom_http.HandleDeposit(db)))
 	mux.HandleFunc("/ride/wallet/deposit", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleDeposit(db)))
 	mux.HandleFunc("/wallet/verify", middleware.RequireRole(db, []string{"customer"}, vrom_http.HandleVerifyPayment(db)))
-	mux.HandleFunc("/paystack-webhook", vrom_http.HandlePaystackWebhook(db)) // No Auth: verify via HMAC
+	mux.HandleFunc("/paystack-webhook", vrom_http.HandlePaystackWebhook(db))        // No Auth: verify via HMAC
 	mux.HandleFunc("/wallet/paystack/webhook", vrom_http.HandlePaystackWebhook(db)) // No Auth: verify via HMAC
 	mux.HandleFunc("/wallet/withdraw", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleWithdrawToMpesa(db)))
 	mux.HandleFunc("/user/profile/update", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleUpdateProfile(db)))
@@ -122,7 +123,6 @@ func main() {
 	mux.HandleFunc("/seller/product/edit", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleEditProduct(db)))
 	mux.HandleFunc("/seller/product/delete", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleDeleteProduct(db)))
 	mux.HandleFunc("/seller/stock/order", middleware.RequireRole(db, []string{"seller"}, vrom_http.HandleOrderStock(db)))
-	mux.HandleFunc("/order/create", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleCreateOrder(db)))
 	mux.HandleFunc("/ride/order/create", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleCreateOrder(db)))
 	mux.HandleFunc("/order/complete", middleware.RequireRole(db, []string{"rider"}, vrom_http.HandleCompleteOrder(db)))
 	mux.HandleFunc("/ride/order/complete", middleware.RequireRole(db, []string{"rider"}, vrom_http.HandleCompleteOrder(db)))
@@ -135,12 +135,12 @@ func main() {
 	mux.HandleFunc("/ride/onboard/rider", vrom_http.HandleOnboardRider(db))
 	mux.HandleFunc("/onboard/seller", vrom_http.HandleOnboardSeller(db))
 	mux.HandleFunc("/ride/onboard/seller", vrom_http.HandleOnboardSeller(db))
-	
+
 	mux.HandleFunc("/rider/status", middleware.RequireRole(db, []string{"rider"}, vrom_http.HandleToggleStatus(db)))
 	mux.HandleFunc("/rider/decision", middleware.RequireRole(db, []string{"rider"}, vrom_http.HandleRiderDecision(db)))
 	mux.HandleFunc("/rider/start", middleware.RequireRole(db, []string{"rider"}, vrom_http.HandleStartTrip(db)))
 	mux.HandleFunc("/rider/complete", middleware.RequireRole(db, []string{"rider"}, vrom_http.HandleCompleteTrip(db)))
-	
+
 	mux.HandleFunc("/nearby", vrom_http.HandleGetNearby(rustAddr))
 	mux.HandleFunc("/ride/request", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleRequestRide(db, rustAddr)))
 	mux.HandleFunc("/ride/cancel", middleware.RequireRole(db, []string{"customer", "seller", "rider"}, vrom_http.HandleCancelRide(db)))
@@ -180,7 +180,7 @@ func main() {
 	// Analytics
 	mux.HandleFunc("/occ/analytics/financials", middleware.AdminOnly(db, vrom_http.HandleOCCGetFinancials(db)))
 	mux.HandleFunc("/occ/analytics/escrow", middleware.AdminOnly(db, vrom_http.HandleOCCGetEscrow(db)))
-	
+
 	// Regions & Admin Management
 	mux.HandleFunc("/occ/regions", middleware.AdminOnly(db, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -205,10 +205,11 @@ func main() {
 	mux.HandleFunc("/occ/crm/history", middleware.AdminOnly(db, vrom_http.HandleOCCGetUserHistory(db)))
 	mux.HandleFunc("/occ/crm/history/delete", middleware.AdminOnly(db, vrom_http.HandleOCCDeleteHistoryItem(db)))
 	mux.HandleFunc("/occ/crm/history/clear", middleware.AdminOnly(db, vrom_http.HandleOCCClearUserHistory(db)))
-	
+
 	// Kill Switch
 	mux.HandleFunc("/occ/admin/suspend", middleware.AdminOnly(db, vrom_http.HandleOCCSuspendUser(db)))
 	mux.HandleFunc("/occ/admin/unsuspend", middleware.AdminOnly(db, vrom_http.HandleOCCUnsuspendUser(db)))
+	mux.HandleFunc("/occ/admin/delete-user", middleware.AdminOnly(db, vrom_http.HandleOCCDeleteUser(db)))
 	mux.HandleFunc("/occ/admin/maintenance", middleware.AdminOnly(db, vrom_http.HandleOCCToggleMaintenance(db)))
 	mux.HandleFunc("/occ/admin/maintenance/status", middleware.AdminOnly(db, vrom_http.HandleOCCGetMaintenanceStatus()))
 	// Security Alerts

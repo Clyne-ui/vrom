@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import { useUser } from '@/lib/contexts/user-context'
 import { useEffect, useCallback } from 'react'
+import { apiClient } from '@/lib/api-client'
+import { toast } from 'sonner'
 
 type UserType = 'customer' | 'seller' | 'rider' | 'admin' | 'moderator'
 type UserStatus = 'active' | 'blocked' | 'suspended'
@@ -108,35 +110,29 @@ export default function CRMPage() {
   const fetchUsers = useCallback(async () => {
     setIsLoading(true)
     try {
-      const token = localStorage.getItem('vrom_session_token')
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/occ/crm/search?q=${search}&role=${filterType === 'all' ? '' : filterType}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        const dataArray = Array.isArray(data) ? data : []
-        // Map backend AdminUserView to frontend VromUser
-        const mapped: VromUser[] = dataArray.map((u: any) => ({
-          id: u.user_id,
-          name: u.full_name,
-          email: u.email,
-          phone: u.phone_number,
-          type: u.role as UserType,
-          status: u.is_verified ? 'active' : 'blocked',
-          joinDate: u.created_at?.split('T')[0] || 'N/A',
-          region: 'kenya', // Placeholder or add to backend
-          orders: u.orders_count || 0,
-          trips: u.trips_count || 0,
-          walletBalance: u.balance || 0,
-          totalSpent: 0, // Need backend support
-          totalEarned: 0, // Need backend support
-          rating: 0, // Need backend support
-          sales: 0,
-        }))
-        setUsers(mapped)
-      }
-    } catch (err) {
-      console.error('Failed to fetch users:', err)
+      const data = await apiClient.searchUsers(search, filterType === 'all' ? undefined : filterType)
+      const dataArray = Array.isArray(data) ? data : []
+      // Map backend AdminUserView to frontend VromUser
+      const mapped: VromUser[] = dataArray.map((u: any) => ({
+        id: u.user_id,
+        name: u.full_name,
+        email: u.email,
+        phone: u.phone_number,
+        type: u.role as UserType,
+        status: u.is_verified ? 'active' : 'blocked',
+        joinDate: u.created_at?.split('T')[0] || 'N/A',
+        region: 'kenya', // Placeholder or add to backend
+        orders: u.orders_count || 0,
+        trips: u.trips_count || 0,
+        walletBalance: u.balance || 0,
+        totalSpent: 0, // Need backend support
+        totalEarned: 0, // Need backend support
+        rating: 0, // Need backend support
+        sales: 0,
+      }))
+      setUsers(mapped)
+    } catch (err: any) {
+      toast.error(err.message)
     } finally {
       setIsLoading(false)
     }
@@ -168,11 +164,14 @@ export default function CRMPage() {
   }
 
   const deleteUser = async (id: string) => {
-    // Backend doesn't have a specific OCC delete yet, using suspend for now
-    // or we could add a DELETE endpoint. 
-    // To preserve UI functionality:
-    setUsers(prev => prev.filter(u => u.id !== id))
-    setConfirmDelete(null)
+    try {
+      await apiClient.deleteUser(id)
+      setUsers(prev => prev.filter(u => u.id !== id))
+      setConfirmDelete(null)
+      toast.success('User purged successfully')
+    } catch (err: any) {
+      toast.error(err.message)
+    }
   }
 
   const handleCreate = () => {

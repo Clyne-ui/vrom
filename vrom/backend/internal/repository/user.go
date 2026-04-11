@@ -49,7 +49,7 @@ func RegisterUser(db *sql.DB, u models.User) (string, error) {
 			return "", err
 		}
 		fmt.Printf("✅ Customer OTP for %s: %s\n", u.Email, otpCode)
-		
+
 		// Asynchronously send the real email!
 		go utils.SendEmail(u.Email, "Welcome to Vrom! Your OTP", fmt.Sprintf("Your Vrom registration OTP is: %s", otpCode))
 	}
@@ -82,7 +82,7 @@ func GetTripHistory(db *sql.DB, userID string) ([]models.TripSummary, error) {
 		FROM trips 
 		WHERE buyer_id = $1 OR rider_id = $1
 		ORDER BY created_at DESC`
-	
+
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func GetOrderHistory(db *sql.DB, userID string) ([]models.OrderSummary, error) {
 		JOIN products p ON o.product_id = p.product_id
 		WHERE o.buyer_id = $1 OR o.seller_id = $1
 		ORDER BY o.created_at DESC`
-	
+
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		return nil, err
@@ -305,7 +305,7 @@ func ApproveRider(db *sql.DB, userID string, region string) error {
 		ON CONFLICT (rider_id) DO UPDATE SET 
 			status = 'online', 
 			is_available = true`
-	
+
 	_, err = tx.ExecContext(ctx, riderProfileQuery, userID)
 	if err != nil {
 		tx.Rollback()
@@ -446,7 +446,7 @@ func WithdrawToMpesa(db *sql.DB, email string, amount float64) (float64, string,
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO user_activities (user_id, activity_type, description, amount, balance_after) 
-		VALUES ($1, 'mpesa_withdrawal', $2, $3, $4)`, 
+		VALUES ($1, 'mpesa_withdrawal', $2, $3, $4)`,
 		userID, fmt.Sprintf("M-Pesa Withdrawal to %s (Fee: KES %.2f)", phoneNumber, withdrawalFee), -totalDeduction, newBalance)
 	if err != nil {
 		return 0, "", "", err
@@ -459,7 +459,7 @@ func WithdrawToMpesa(db *sql.DB, email string, amount float64) (float64, string,
 	return newBalance, phoneNumber, userID, nil
 }
 
-func DeleteAccount(db *sql.DB, email string) error {
+func DeleteUserByID(db *sql.DB, userID string) error {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -467,31 +467,19 @@ func DeleteAccount(db *sql.DB, email string) error {
 	}
 	defer tx.Rollback()
 
-	// 1. Get the userID
-	var userID string
-	err = tx.QueryRowContext(ctx, "SELECT user_id FROM users WHERE email = $1", email).Scan(&userID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil // User already gone, consider it success
-		}
-		return err
-	}
-
 	// 2. Delete from tables that don't have ON DELETE CASCADE
 	// We check for errors now because if one fails, Postgres aborts the whole transaction.
-	
+
 	// Delete any AI flags
 	if _, err = tx.ExecContext(ctx, "DELETE FROM ai_content_flags WHERE product_id IN (SELECT product_id FROM products WHERE seller_id = $1)", userID); err != nil {
 		log.Printf("⚠️ Note: ai_content_flags cleanup skipped or failed: %v", err)
-		// We can't continue the same transaction if it failed. 
-		// For now, let's just log it. In a real app we would check if table exists.
 	}
-	
+
 	// Delete wallet transactions
 	if _, err = tx.ExecContext(ctx, "DELETE FROM wallet_transactions WHERE wallet_id = $1", userID); err != nil {
 		log.Printf("⚠️ Note: wallet_transactions cleanup failed: %v", err)
 	}
-	
+
 	// Delete products and shops
 	if _, err = tx.ExecContext(ctx, "DELETE FROM products WHERE seller_id = $1", userID); err != nil {
 		log.Printf("⚠️ Note: products cleanup failed: %v", err)
@@ -499,7 +487,7 @@ func DeleteAccount(db *sql.DB, email string) error {
 	if _, err = tx.ExecContext(ctx, "DELETE FROM shops WHERE seller_id = $1", userID); err != nil {
 		log.Printf("⚠️ Note: shops cleanup failed: %v", err)
 	}
-	
+
 	// Delete internal tracking
 	if _, err = tx.ExecContext(ctx, "DELETE FROM user_activities WHERE user_id = $1", userID); err != nil {
 		log.Printf("⚠️ Note: user_activities cleanup failed: %v", err)
@@ -508,7 +496,7 @@ func DeleteAccount(db *sql.DB, email string) error {
 		log.Printf("⚠️ Note: otps cleanup failed: %v", err)
 	}
 
-	// 3. Final Blow: Delete from the users table. 
+	// 3. Final Blow: Delete from the users table.
 	_, err = tx.ExecContext(ctx, "DELETE FROM users WHERE user_id = $1", userID)
 	if err != nil {
 		log.Printf("❌ CRITICAL: Final user delete failed: %v", err)
@@ -516,6 +504,18 @@ func DeleteAccount(db *sql.DB, email string) error {
 	}
 
 	return tx.Commit()
+}
+
+func DeleteAccount(db *sql.DB, email string) error {
+	var userID string
+	err := db.QueryRow("SELECT user_id FROM users WHERE email = $1", email).Scan(&userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	return DeleteUserByID(db, userID)
 }
 
 func DeleteHistory(db *sql.DB, email string) error {
@@ -592,7 +592,7 @@ func GetDetailedStatement(db *sql.DB, userID string) ([]models.Activity, error) 
 		FROM user_activities 
 		WHERE user_id = $1 
 		ORDER BY created_at DESC`
-	
+
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		return nil, err

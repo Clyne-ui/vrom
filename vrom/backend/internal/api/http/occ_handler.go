@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,9 +15,6 @@ import (
 	"vrom-backend/internal/models"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
-	"math/rand"
-	"net"
-	"log"
 )
 
 // ─────────────────────────────────────────────────
@@ -88,7 +88,7 @@ func HandleOCCHealthStream() http.HandlerFunc {
 				}
 				return time.Since(start).Milliseconds()
 			}
-			
+
 			// For non-http, use TCP dial as a ping
 			conn, err := net.DialTimeout("tcp", target, 2*time.Second)
 			if err != nil {
@@ -108,12 +108,12 @@ func HandleOCCHealthStream() http.HandlerFunc {
 				python_ms := check("localhost:50052")
 
 				health := map[string]interface{}{
-					"go_api_ms":   go_ms,
-					"rust_ms":     rust_ms,
-					"python_ms":   python_ms,
-					"checked_at":  time.Now().Format(time.RFC3339),
-					"go_status":   getStatus(go_ms),
-					"rust_status": getStatus(rust_ms),
+					"go_api_ms":     go_ms,
+					"rust_ms":       rust_ms,
+					"python_ms":     python_ms,
+					"checked_at":    time.Now().Format(time.RFC3339),
+					"go_status":     getStatus(go_ms),
+					"rust_status":   getStatus(rust_ms),
 					"python_status": getStatus(python_ms),
 				}
 				data, _ := json.Marshal(health)
@@ -144,7 +144,7 @@ func getStatus(ms int64) string {
 func HandleGetServiceHealth(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		service := r.URL.Path[len("/occ/health/"):]
-		
+
 		checkStatus := func(target string) int64 {
 			start := time.Now()
 			if strings.HasPrefix(target, "http") {
@@ -175,7 +175,7 @@ func HandleGetServiceHealth(db *sql.DB) http.HandlerFunc {
 
 		latency := checkStatus(target)
 		status := getStatus(latency)
-		
+
 		cpu := float64(rand.Intn(1500))/100.0 + 2.0
 		mem := float64(rand.Intn(4000) + 1000)
 		uptime := "4d 12h 30m"
@@ -303,17 +303,13 @@ func BroadcastNotification(db *sql.DB, notifType, title, message string) {
 
 func HandleOCCGetFinancials(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		financials, err := repository.GetLiveFinancials(db)
+		data, err := repository.GetDashboardData(db)
 		if err != nil {
-			http.Error(w, "Failed to fetch financials", http.StatusInternalServerError)
+			http.Error(w, "Failed to fetch dashboard data: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		revenue, _ := repository.GetRevenueBreakdown(db)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"financials": financials,
-			"revenue":    revenue,
-		})
+		json.NewEncoder(w).Encode(data)
 	}
 }
 
@@ -454,15 +450,41 @@ func HandleOCCUnsuspendUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := repository.UnsuspendUser(db, req.UserID); err != nil {
-			http.Error(w, "Unsuspend failed", http.StatusInternalServerError)
+			http.Error(w, "Unsuspension failed", http.StatusInternalServerError)
 			return
 		}
 
 		adminEmail := r.Header.Get("X-User-Email")
 		repository.WriteAuditLog(db, adminEmail, "UNSUSPENDED_USER", req.UserID, r.RemoteAddr)
 
+		json.NewEncoder(w).Encode(map[string]string{"status": "Success"})
+	}
+}
+
+func HandleOCCDeleteUser(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			UserID string `json:"user_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.UserID == "" {
+			http.Error(w, "user_id required", http.StatusBadRequest)
+			return
+		}
+
+		// DESTRUCTIVE ACTION
+		if err := repository.DeleteUserByID(db, req.UserID); err != nil {
+			http.Error(w, "Deletion failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		adminEmail := r.Header.Get("X-User-Email")
+		repository.WriteAuditLog(db, adminEmail, "PERMANENTLY_DELETED_USER", req.UserID, r.RemoteAddr)
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "Success", "message": "User reinstated."})
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "Success",
+			"message": fmt.Sprintf("User %s has been permanently purged from the system.", req.UserID),
+		})
 	}
 }
 
@@ -708,7 +730,7 @@ func HandleCreateRegion(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Invalid input data", http.StatusBadRequest)
 			return
 		}
-		
+
 		created, err := repository.CreateRegion(db, req)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -739,12 +761,12 @@ func HandleGetRegions(db *sql.DB) http.HandlerFunc {
 func HandleCreateAdmin(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			FullName      string `json:"full_name"`
-			Email         string `json:"email"`
-			Password      string `json:"password"`
-			Role          string `json:"role"` // 'regional_admin'
+			FullName       string `json:"full_name"`
+			Email          string `json:"email"`
+			Password       string `json:"password"`
+			Role           string `json:"role"`            // 'regional_admin'
 			AssignedRegion string `json:"assigned_region"` // region ID
-			PhoneNumber   string `json:"phone_number"`
+			PhoneNumber    string `json:"phone_number"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid input", http.StatusBadRequest)
@@ -779,7 +801,7 @@ func HandleCreateAdmin(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]string{
-			"status": "Success",
+			"status":  "Success",
 			"message": "Admin user created successfully and assigned to region.",
 		})
 	}
