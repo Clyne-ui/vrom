@@ -11,6 +11,7 @@ import (
 	"vrom-backend/internal/events"
 	"vrom-backend/internal/repository"
 	"vrom-backend/internal/services"
+	"os"
 
 	"github.com/joho/godotenv"
 )
@@ -21,8 +22,11 @@ func main() {
 		log.Println("⚠️  Warning: No .env file found. Using default/environment variables.")
 	}
 
-	// Database connection string for port 3000
-	connStr := "postgres://postgres:37877975123@127.0.0.1:3000/Vromdatabase?sslmode=disable"
+	// Database connection string (from env or default)
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "postgres://postgres:37877975123@127.0.0.1:3000/Vromdatabase?sslmode=disable"
+	}
 	fmt.Printf("📂 CONNECTING TO DATABASE: %s\n", connStr)
 	db, err := repository.ConnectDB(connStr)
 	if err != nil {
@@ -36,9 +40,13 @@ func main() {
 	repository.InitDatabase(db)
 
 	// Initialize Kafka Producer
-	events.InitKafkaWriter("localhost:9092", "vrom.transactions.fraud_check")
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokers == "" {
+		kafkaBrokers = "localhost:9092"
+	}
+	events.InitKafkaWriter(kafkaBrokers, "vrom.transactions.fraud_check")
 	defer events.Writer.Close()
-	fmt.Println("📡 KAFKA PRODUCER INITIALIZED")
+	fmt.Printf("📡 KAFKA PRODUCER INITIALIZED (Brokers: %s)\n", kafkaBrokers)
 
 	// Initialize Firebase Admin SDK
 	// IMPORTANT: Update this path to your actual service account JSON file!
@@ -48,7 +56,10 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	rustAddr := "localhost:50051"
+	rustAddr := os.Getenv("MATCHING_ENGINE_ADDR")
+	if rustAddr == "" {
+		rustAddr = "localhost:50051"
+	}
 
 	// Background cleanup of unverified users
 	go func() {
@@ -59,9 +70,13 @@ func main() {
 	}()
 
 	// Initialize WebSocket Hub
-	wsHub := websocket.NewHub("localhost:6379")
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	wsHub := websocket.NewHub(redisAddr)
 	go wsHub.Run()
-	fmt.Println("🔌 WEBSOCKET HUB INITIALIZED")
+	fmt.Printf("🔌 WEBSOCKET HUB INITIALIZED (Redis: %s)\n", redisAddr)
 
 	// Initialize Auth Service with Redis (for token revocation)
 	services.InitAuthService(wsHub.RedisClient)
@@ -154,7 +169,10 @@ func main() {
 	mux.HandleFunc("/admin/riders/reject", middleware.AdminOnly(db, vrom_http.HandleRejectRider(db)))
 
 	// --- 6. AI & ANALYTICS HANDLERS ---
-	aiAddr := "127.0.0.1:50052"
+	aiAddr := os.Getenv("AI_SERVICE_ADDR")
+	if aiAddr == "" {
+		aiAddr = "127.0.0.1:50052"
+	}
 	mux.HandleFunc("/ai/support", vrom_http.HandleSupportChat(aiAddr))
 	mux.HandleFunc("/ai/eta", vrom_http.HandlePredictETA(aiAddr))
 

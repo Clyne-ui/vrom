@@ -21,7 +21,13 @@ func ConnectDB(connStr string) (*sql.DB, error) {
 	db.SetMaxIdleConns(50)           // Max idle connections in the pool
 	db.SetConnMaxLifetime(time.Hour) // Max time a connection can be reused
 
-	if err := db.Ping(); err != nil {
+	for i := 0; i < 15; i++ {
+		if err = db.Ping(); err == nil {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil {
 		return nil, err
 	}
 

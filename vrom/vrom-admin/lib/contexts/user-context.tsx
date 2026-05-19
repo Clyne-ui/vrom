@@ -19,19 +19,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // ── Persist access token ──────────────────────────────
   const persistToken = (t: string) => {
     setTokenState(t)
-    localStorage.setItem('vrom_session_token', t)
+    // We no longer persist tokens in localStorage for security. 
+    // They are handled by HttpOnly cookies instead.
   }
 
   // ── Silent background refresh ─────────────────────────
   const silentRefresh = async () => {
-    const refreshToken = localStorage.getItem('vrom_refresh_token')
-    if (!refreshToken) return
-
     try {
       const res = await fetch(`${API}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: 'include', // Send the refresh_token cookie
       })
       if (res.ok) {
         const data = await res.json()
@@ -51,8 +49,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   const clearSession = () => {
-    localStorage.removeItem('vrom_session_token')
-    localStorage.removeItem('vrom_refresh_token')
     localStorage.removeItem('vrom_user')
     setTokenState(null)
     setUserState(null)
@@ -68,10 +64,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // ── Load from localStorage on mount ──────────────────
   useEffect(() => {
     const userSession = localStorage.getItem('vrom_user')
-    const sessionToken = localStorage.getItem('vrom_session_token')
-    const refreshToken = localStorage.getItem('vrom_refresh_token')
-
-    if (sessionToken) setTokenState(sessionToken)
 
     if (userSession) {
       try {
@@ -79,11 +71,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUserState(parsedUser)
         if (parsedUser.role === 'super_admin') setRegionState('global')
         else if (parsedUser.region) setRegionState(parsedUser.region)
+        
+        // Start background loop if we have a user (assuming cookie is valid)
+        startRefreshLoop()
       } catch {}
     }
-
-    // If we have a refresh token, start the background loop immediately
-    if (refreshToken) startRefreshLoop()
 
     setIsLoading(false)
 
@@ -99,7 +91,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     if (newToken) persistToken(newToken)
     if (refreshToken) {
-      localStorage.setItem('vrom_refresh_token', refreshToken)
       startRefreshLoop()
     }
 

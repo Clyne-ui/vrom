@@ -31,7 +31,10 @@ public class SurgePricingJob {
     public static void main(String[] args) throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        String brokers = "localhost:9092";
+        String brokers = System.getenv("KAFKA_BROKERS");
+        if (brokers == null || brokers.isEmpty()) {
+            brokers = "localhost:9092";
+        }
 
         // 1. Source: Driver Supply Topic
         KafkaSource<String> supplySource = KafkaSource.<String>builder()
@@ -102,7 +105,15 @@ public class SurgePricingJob {
 
         DataStream<String> demandOutput = demandCount
                 .map(new MapFunction<Tuple2<String, Integer>, String>() {
-                    private static final JedisPool pool = new JedisPool(new JedisPoolConfig(), "localhost", 6379);
+                    private static final JedisPool pool = createJedisPool();
+
+                    private static JedisPool createJedisPool() {
+                        String redisHost = System.getenv("REDIS_HOST");
+                        if (redisHost == null || redisHost.isEmpty()) {
+                            redisHost = "localhost";
+                        }
+                        return new JedisPool(new JedisPoolConfig(), redisHost, 6379);
+                    }
 
                     @Override
                     public String map(Tuple2<String, Integer> value) throws Exception {

@@ -50,8 +50,6 @@ export default function LoginPage() {
           loginTime: new Date().toISOString()
         }
 
-        localStorage.setItem('vrom_session_token', data.access_token)
-        if (data.refresh_token) localStorage.setItem('vrom_refresh_token', data.refresh_token)
         setUser(user, data.access_token, data.refresh_token)
         router.push('/dashboard')
       } else {
@@ -86,8 +84,6 @@ export default function LoginPage() {
           loginTime: new Date().toISOString()
         }
 
-        localStorage.setItem('vrom_session_token', data.access_token)
-        if (data.refresh_token) localStorage.setItem('vrom_refresh_token', data.refresh_token)
         setUser(user, data.access_token, data.refresh_token)
         router.push('/dashboard')
       } else {

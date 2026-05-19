@@ -1,0 +1,9 @@
+.venv
+venv
+__pycache__
+.git
+.env
+Dockerfile
+docker-compose.yml
+test_import.py
+fix_ai.py

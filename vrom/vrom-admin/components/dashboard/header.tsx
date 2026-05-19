@@ -64,9 +64,13 @@ export function Header() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await apiClient.logout()
+    } catch (e) {
+      console.error('Logout failed', e)
+    }
     localStorage.removeItem('vrom_user')
-    localStorage.removeItem('vrom_session_token')
     router.push('/login')
   }
 

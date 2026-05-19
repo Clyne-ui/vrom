@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 	"vrom-backend/internal/models"
+	"vrom-backend/internal/utils"
 )
 
 // ───────────────────────────────────────────────
@@ -592,6 +593,12 @@ func GetRiderFullDetail(db *sql.DB, userID string) (models.RiderFullDetail, erro
 		for rows.Next() {
 			var doc models.RiderDocument
 			if err := rows.Scan(&doc.DocumentType, &doc.ImageURL, &doc.VerificationStatus); err == nil {
+				if doc.ImageURL != "" {
+					decURL, err := utils.DecryptAES(doc.ImageURL)
+					if err == nil {
+						doc.ImageURL = decURL
+					}
+				}
 				detail.Documents = append(detail.Documents, doc)
 			}
 		}

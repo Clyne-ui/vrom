@@ -127,7 +127,11 @@ func GetOrderHistory(db *sql.DB, userID string) ([]models.OrderSummary, error) {
 
 // UpdateFCMToken saves the latest Firebase device token for a user so we can send them push notifications.
 func UpdateFCMToken(db *sql.DB, userID, token string) error {
-	_, err := db.Exec("UPDATE users SET fcm_token = $1 WHERE user_id = $2", token, userID)
+	encryptedToken, err := utils.EncryptAES(token)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("UPDATE users SET fcm_token = $1 WHERE user_id = $2", encryptedToken, userID)
 	return err
 }
 
@@ -138,7 +142,17 @@ func GetFCMToken(db *sql.DB, userID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return token.String, nil
+	
+	if !token.Valid || token.String == "" {
+		return "", nil
+	}
+
+	decryptedToken, err := utils.DecryptAES(token.String)
+	if err != nil {
+		return "", err
+	}
+
+	return decryptedToken, nil
 }
 
 func RecordTransaction(db *sql.DB, userID string, aType string, desc string, amount float64) error {
@@ -213,7 +227,12 @@ func OnboardRider(db *sql.DB, data models.RiderOnboarding) error {
 
 	for _, doc := range documents {
 		if doc.URL != "" {
-			_, err = tx.ExecContext(ctx, docQuery, data.UserID, doc.Type, doc.URL)
+			encURL, err := utils.EncryptAES(doc.URL)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+			_, err = tx.ExecContext(ctx, docQuery, data.UserID, doc.Type, encURL)
 			if err != nil {
 				tx.Rollback()
 				return err
@@ -265,7 +284,12 @@ func OnboardSeller(db *sql.DB, data models.SellerOnboarding) error {
 
 	for _, doc := range documents {
 		if doc.URL != "" {
-			_, err = tx.ExecContext(ctx, docQuery, data.UserID, doc.Type, doc.URL)
+			encURL, err := utils.EncryptAES(doc.URL)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+			_, err = tx.ExecContext(ctx, docQuery, data.UserID, doc.Type, encURL)
 			if err != nil {
 				tx.Rollback()
 				return err
@@ -405,6 +429,12 @@ func GetPendingRiders(db *sql.DB) ([]models.PendingRider, error) {
 		var pr models.PendingRider
 		if err := rows.Scan(&pr.UserID, &pr.FullName, &pr.VehicleType, &pr.IDImage); err != nil {
 			return nil, err
+		}
+		if pr.IDImage != "" {
+			decURL, err := utils.DecryptAES(pr.IDImage)
+			if err == nil {
+				pr.IDImage = decURL
+			}
 		}
 		riders = append(riders, pr)
 	}

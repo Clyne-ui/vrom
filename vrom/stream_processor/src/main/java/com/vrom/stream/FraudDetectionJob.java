@@ -26,7 +26,10 @@ public class FraudDetectionJob {
     public static void main(String[] args) throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        String brokers = "localhost:9092";
+        String brokers = System.getenv("KAFKA_BROKERS");
+        if (brokers == null || brokers.isEmpty()) {
+            brokers = "localhost:9092";
+        }
 
         KafkaSource<String> transactionSource = KafkaSource.<String>builder()
                 .setBootstrapServers(brokers)

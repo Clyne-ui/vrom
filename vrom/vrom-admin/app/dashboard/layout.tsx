@@ -21,9 +21,8 @@ export default function DashboardLayout({
     const checkAuth = async () => {
       try {
         const userSession = localStorage.getItem('vrom_user')
-        const sessionToken = localStorage.getItem('vrom_session_token')
 
-        if (!userSession || !sessionToken) {
+        if (!userSession) {
           router.push('/login')
           setIsLoading(false)
           return
@@ -35,7 +34,6 @@ export default function DashboardLayout({
       } catch (err) {
         console.error('Auth verification failed:', err)
         localStorage.removeItem('vrom_user')
-        localStorage.removeItem('vrom_session_token')
         router.push('/login')
       } finally {
         setIsLoading(false)

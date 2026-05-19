@@ -13,12 +13,20 @@ import (
 func RequireRole(db *sql.DB, allowedRoles []string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, "Authentication required (Missing or invalid Authorization header)", http.StatusUnauthorized)
-			return
+		var tokenString string
+
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+		} else {
+			if cookie, err := r.Cookie("vrom_session_token"); err == nil {
+				tokenString = cookie.Value
+			}
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == "" {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
 		claims, err := services.ValidateToken(tokenString)
 		if err != nil {
 			// If system is under maintenance, even invalid tokens get the 503 instead of 401
@@ -85,9 +93,12 @@ func AdminOnly(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
 			log.Printf("AdminOnly: Found Bearer token in header")
+		} else if cookie, err := r.Cookie("vrom_session_token"); err == nil && cookie.Value != "" {
+			tokenString = cookie.Value
+			log.Printf("AdminOnly: Found token in cookie")
 		} else {
 			tokenString = r.URL.Query().Get("token")
-			log.Printf("AdminOnly: No header, checking query token (len=%d)", len(tokenString))
+			log.Printf("AdminOnly: Checking query token (len=%d)", len(tokenString))
 		}
 
 		if (tokenString == "" || tokenString == "undefined") {

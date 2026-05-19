@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useUser } from '@/lib/contexts/user-context'
 import { REGIONS } from '@/lib/regions'
 import { RegionCode } from '@/lib/types'
+import router from 'next/router'
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', roles: ['super_admin', 'regional_admin', 'operator'] },
@@ -67,7 +68,7 @@ export function Sidebar() {
 
   const currentDbRegion = dbRegions.find(r => r.id === region)
   const fallbackRegionInfo = REGIONS[region as RegionCode]
-  
+
   const displayName = currentDbRegion ? currentDbRegion.name : fallbackRegionInfo?.name
   const displayCountry = currentDbRegion ? currentDbRegion.country : fallbackRegionInfo?.country
   const regionColorClass = REGION_COLORS[region as RegionCode] ?? REGION_COLORS.global
@@ -136,8 +137,8 @@ export function Sidebar() {
               href={item.href}
               onClick={() => setIsOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5 transition-colors text-sm ${active
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground font-semibold'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                ? 'bg-sidebar-primary text-sidebar-primary-foreground font-semibold'
+                : 'text-sidebar-foreground hover:bg-sidebar-accent'
                 }`}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
@@ -156,8 +157,8 @@ export function Sidebar() {
           <button
             onClick={() => setMaintenanceMode(!maintenanceMode)}
             className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${maintenanceMode
-                ? 'bg-destructive/20 text-destructive border border-destructive/40'
-                : 'text-sidebar-foreground hover:bg-sidebar-accent'
+              ? 'bg-destructive/20 text-destructive border border-destructive/40'
+              : 'text-sidebar-foreground hover:bg-sidebar-accent'
               }`}
           >
             <Power className="h-4 w-4" />
@@ -182,9 +183,11 @@ export function Sidebar() {
           </div>
         )}
         <Button
-          onClick={() => {
+          onClick={async () => {
+            try {
+              await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/logout`, { method: 'POST', credentials: 'include' })
+            } catch (e) { console.error('Logout failed', e) }
             localStorage.removeItem('vrom_user')
-            localStorage.removeItem('vrom_session_token')
             router.push('/login')
           }}
           variant="outline"

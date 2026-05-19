@@ -12,6 +12,7 @@ import { RiderDetailsDrawer } from '@/components/dashboard/map/rider-details-dra
 interface FleetLocation {
   id: string
   rawId?: string // Original database UUID
+  tripId?: string // Link driver to order
   lat: number
   lng: number
   type: 'driver' | 'order' | 'demand'
@@ -43,6 +44,7 @@ export default function MapPage() {
       { 
         id: `ACT-DRV-${t.trip_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`, 
         rawId: t.rider_id, // Store for drill-down
+        tripId: t.trip_id, // Added for routing
         lat: t.p_lat || -1.2863, 
         lng: t.p_lng || 36.8172, 
         type: 'driver' as const, 
@@ -56,6 +58,7 @@ export default function MapPage() {
       },
       { 
         id: `ORD-${t.trip_id?.slice(0, 4) || Math.random().toString().slice(2, 6)}`, 
+        tripId: t.trip_id, // Added for routing
         lat: t.d_lat || -1.2954, 
         lng: t.d_lng || 36.8225, 
         type: 'order' as const, 

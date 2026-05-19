@@ -95,11 +95,32 @@ func HandleLogin(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Set Cookies
+		http.SetCookie(w, &http.Cookie{
+			Name:     "vrom_session_token",
+			Value:    accessToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false, // set to true in production with HTTPS
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   900, // 15 minutes
+		})
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "vrom_refresh_token",
+			Value:    refreshToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false, // set to true in production with HTTPS
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   604800, // 7 days
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":        "Success",
 			"message":       fmt.Sprintf("Welcome back, %s!", fullName),
-			"access_token":  accessToken,
+			"access_token":  accessToken, // Kept for WebSocket usage
 			"refresh_token": refreshToken,
 			"user": map[string]string{
 				"user_id":   userID,
@@ -122,13 +143,14 @@ func HandleVerifyOTP(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var userID string
+		var userID, role string
 		query := `
-            SELECT user_id FROM otps 
-            WHERE code = $1 AND user_id = (SELECT user_id FROM users WHERE email = $2)
-            AND expires_at > CURRENT_TIMESTAMP`
+            SELECT u.user_id, u.role FROM otps o
+            JOIN users u ON o.user_id = u.user_id
+            WHERE o.code = $1 AND u.email = $2
+              AND o.expires_at > CURRENT_TIMESTAMP`
 		
-		err := db.QueryRow(query, strings.TrimSpace(req.Code), req.Email).Scan(&userID)
+		err := db.QueryRow(query, strings.TrimSpace(req.Code), req.Email).Scan(&userID, &role)
 		if err != nil {
 			http.Error(w, "Invalid or expired OTP", http.StatusUnauthorized)
 			return
@@ -137,25 +159,90 @@ func HandleVerifyOTP(db *sql.DB) http.HandlerFunc {
 		db.Exec("UPDATE users SET is_verified = true WHERE user_id = $1", userID)
 		db.Exec("DELETE FROM otps WHERE user_id = $1", userID)
 
-		fmt.Fprint(w, "OTP Verified! Redirecting to Home Page...")
+		// Generate JWT Tokens for Auto-Login
+		accessToken, refreshToken, err := services.GenerateTokens(userID, req.Email, role)
+		if err != nil {
+			http.Error(w, "Failed to generate tokens", http.StatusInternalServerError)
+			return
+		}
+
+		// Set Cookies
+		http.SetCookie(w, &http.Cookie{
+			Name:     "vrom_session_token",
+			Value:    accessToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false, // set to true in production with HTTPS
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   900, // 15 minutes
+		})
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "vrom_refresh_token",
+			Value:    refreshToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   604800, // 7 days
+		})
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "Success",
+			"message":       "OTP Verified! Auto-logging you in...",
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"user": map[string]string{
+				"user_id": userID,
+				"email":   req.Email,
+				"role":    role,
+			},
+		})
 	}
 }
 
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
+	// 1. Invalidate Token in Redis if available
 	authHeader := r.Header.Get("Authorization")
+	var tokenString string
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		// Blacklist the token in Redis until it naturally expires
+		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+	} else {
+		if cookie, err := r.Cookie("vrom_session_token"); err == nil {
+			tokenString = cookie.Value
+		}
+	}
+
+	if tokenString != "" {
 		err := services.RevokeToken(tokenString)
 		if err != nil {
 			log.Printf("⚠️ Logout Revocation Error: %v", err)
 		}
 	}
 
+	// 2. Clear Cookies
+	http.SetCookie(w, &http.Cookie{
+		Name:     "vrom_session_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false,
+		MaxAge:   -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "vrom_refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false,
+		MaxAge:   -1,
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "Success",
-		"message": "Logged out successfully! Token has been invalidated.",
+		"message": "Logged out successfully! Tokens have been invalidated.",
 	})
 }
 
@@ -219,16 +306,29 @@ func HandleResetPassword(db *sql.DB) http.HandlerFunc {
 // The frontend calls this silently every ~12 minutes to stay logged in.
 func HandleRefreshToken(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			RefreshToken string `json:"refresh_token"`
+		var refreshToken string
+		
+		// Attempt to read from cookie first
+		cookie, err := r.Cookie("vrom_refresh_token")
+		if err == nil && cookie.Value != "" {
+			refreshToken = cookie.Value
+		} else {
+			// Fallback to body (for backward compatibility or testing)
+			var req struct {
+				RefreshToken string `json:"refresh_token"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+				refreshToken = req.RefreshToken
+			}
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+
+		if refreshToken == "" {
 			http.Error(w, "Invalid input: refresh_token required", http.StatusBadRequest)
 			return
 		}
 
 		// Parse the refresh token (it only has RegisteredClaims, no custom role/email)
-		claims, err := services.ValidateRefreshToken(req.RefreshToken)
+		claims, err := services.ValidateRefreshToken(refreshToken)
 		if err != nil {
 			log.Printf("HandleRefreshToken: invalid refresh token: %v", err)
 			http.Error(w, "Refresh token expired or invalid. Please login again.", http.StatusUnauthorized)
@@ -253,6 +353,17 @@ func HandleRefreshToken(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 			return
 		}
+
+		// Set the new access token as an HttpOnly cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     "vrom_session_token",
+			Value:    newAccess,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false, // set to true in production with HTTPS
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   900, // 15 minutes
+		})
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{

@@ -1,15 +1,16 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 const request = async (path: string, options: RequestInit = {}) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('vrom_session_token') : null
+  // Read token from memory (state) if passed explicitly, else rely on cookies
+  // We no longer read from localStorage for security reasons.
   const headers = {
     ...options.headers,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
   }
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
+    credentials: 'include', // Ensure cookies are sent automatically
   })
 
   if (!res.ok) {
